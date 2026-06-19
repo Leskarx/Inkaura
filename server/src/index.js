@@ -2,6 +2,10 @@ const express = require("express");
 const cors = require("cors");
 require("dotenv").config();
 
+const initDatabase = require("./config/init-db");
+const authRoutes = require("./routes/auth");
+const employeeRoutes = require("./routes/employees");
+
 const app = express();
 
 app.use(cors());
@@ -14,8 +18,20 @@ app.get("/", (req, res) => {
     });
 });
 
+// Routes
+app.use("/api/auth", authRoutes);
+app.use("/api/employees", employeeRoutes);
+
 const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-});
+// Initialize DB tables then start server
+initDatabase()
+  .then(() => {
+    app.listen(PORT, () => {
+      console.log(`🚀 Server running on port ${PORT}`);
+    });
+  })
+  .catch((err) => {
+    console.error("Failed to initialize database:", err);
+    process.exit(1);
+  });

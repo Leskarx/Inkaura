@@ -15,12 +15,27 @@ export function LoginPage({ onLogin, darkMode, onToggleDark }: LoginPageProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     if (!email || !password) { setError("Please enter your credentials."); return; }
     setLoading(true);
-    setTimeout(() => { setLoading(false); onLogin(); }, 800);
+    try {
+      const res = await fetch("http://localhost:5000/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      const json = await res.json();
+      if (!json.success) { setError(json.message || "Login failed."); setLoading(false); return; }
+      localStorage.setItem("token", json.token);
+      localStorage.setItem("user", JSON.stringify(json.user));
+      setLoading(false);
+      onLogin();
+    } catch {
+      setError("Cannot connect to server.");
+      setLoading(false);
+    }
   };
 
   return (

@@ -15,11 +15,13 @@ import { FinanceDashboard }   from "./components/FinanceDashboard";
 import { SampleApproval }     from "./components/SampleApproval";
 import { MachineManagement }  from "./components/MachineManagement";
 import { ProductionDashboard } from "./components/ProductionDashboard";
-import { PackagingDashboard } from "./components/PackagingDashboard";
-import { ReportsAnalytics }   from "./components/ReportsAnalytics";
+import { PackagingDashboard }    from "./components/PackagingDashboard";
+import { ReportsAnalytics }      from "./components/ReportsAnalytics";
+import { EmployeeManagement }    from "./components/EmployeeManagement";
 
 const screenComponents: Record<Screen, React.ReactNode> = {
   admin:      <AdminDashboard />,
+  employees:  <EmployeeManagement />,
   reports:    <ReportsAnalytics />,
   sales:      <SalesDashboard />,
   customers:  <CustomerManagement />,

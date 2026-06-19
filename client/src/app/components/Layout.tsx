@@ -4,11 +4,11 @@ import {
   ClipboardList, Package, Cpu, CheckSquare, Truck, DollarSign,
   Bell, Search, ChevronDown, Settings, LogOut, Menu, X,
   Printer, ChevronRight, Moon, Sun, BarChart2, FlaskConical,
-  Cog, Factory, Box
+  Cog, Factory, Box, UserCog
 } from "lucide-react";
 
 export type Screen =
-  | "admin" | "sales" | "customers" | "quotations" | "jobs"
+  | "admin" | "employees" | "sales" | "customers" | "quotations" | "jobs"
   | "supervisor" | "inventory" | "operator" | "qc" | "dispatch" | "finance"
   | "sample" | "machines" | "production" | "packaging" | "reports";
 
@@ -23,8 +23,9 @@ const navGroups: { label: string; items: NavItem[] }[] = [
   {
     label: "Overview",
     items: [
-      { id: "admin",   label: "Admin Dashboard",   icon: <LayoutDashboard size={15} /> },
-      { id: "reports", label: "Reports & Analytics", icon: <BarChart2 size={15} /> },
+      { id: "admin",     label: "Admin Dashboard",     icon: <LayoutDashboard size={15} /> },
+      { id: "employees", label: "Employee Management", icon: <UserCog size={15} /> },
+      { id: "reports",   label: "Reports & Analytics",  icon: <BarChart2 size={15} /> },
     ],
   },
   {
@@ -84,6 +85,7 @@ interface LayoutProps {
 
 const screenTitles: Record<Screen, string> = {
   admin:      "Admin Dashboard",
+  employees:  "Employee Management",
   reports:    "Reports & Analytics",
   sales:      "Sales Dashboard",
   customers:  "Customer Management",

@@ -1,11 +1,25 @@
+# PrintFlow ERP Client App
 
-  # Job Management System Dashboard
+This directory contains the React frontend application built with Vite, TypeScript, and TailwindCSS.
 
-  This is a code bundle for Job Management System Dashboard. The original project is available at https://www.figma.com/design/t5Zrl25lFRBNiqVD0e6TJ8/Job-Management-System-Dashboard.
+It communicates directly with a Supabase backend to perform all database transactions and authentication checks.
 
-  ## Running the code
+## Quick Start
 
-  Run `npm i` to install the dependencies.
+1. Install client dependencies:
+   ```bash
+   npm install
+   ```
 
-  Run `npm run dev` to start the development server.
-  
+2. Make sure your `client/.env` is configured:
+   ```env
+   VITE_SUPABASE_URL="https://your-supabase-url.supabase.co"
+   VITE_SUPABASE_ANON_KEY="your-anon-key"
+   ```
+
+3. Run the development server:
+   ```bash
+   npm run dev
+   ```
+
+Refer to the main [Root README](../README.md) for full project architecture, database SQL schemas, and setup instructions.

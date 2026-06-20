@@ -1,159 +1,119 @@
-# Turborepo starter
+# PrintFlow ERP — Job & Employee Management System
 
-This Turborepo starter is maintained by the Turborepo core team.
+PrintFlow ERP is a modern web application designed to streamline print operations, manage jobs, track inventory, monitor production, and manage employees. 
 
-## Using this example
+Originally built as a client-server architecture, this project has been migrated to a **frontend-only architecture** utilizing **Supabase** for database operations and user management directly from the browser. This eliminates the need for maintaining a separate Express backend server.
 
-Run the following command:
+---
 
-```sh
-npx create-turbo@latest
+## 🏗️ Architecture Overview
+
+- **Frontend**: React + TypeScript + Vite + TailwindCSS (under `client/`)
+- **Backend/Database**: Supabase PostgreSQL database
+- **Data Access**: Direct connection using `@supabase/supabase-js` client SDK with Row-Level Security (RLS) configured on the tables.
+
+---
+
+## 🚀 Getting Started
+
+### 1. Prerequisites
+- [Node.js](https://nodejs.org/) (v18 or higher recommended)
+- A [Supabase](https://supabase.com/) account and project.
+
+### 2. Configure Environment Variables
+Navigate to the `client/` directory and create or update the `.env` file:
+
+```bash
+cd client
 ```
 
-## What's inside?
+Ensure the following variables are set with your Supabase credentials:
 
-This Turborepo includes the following packages/apps:
-
-### Apps and Packages
-
-- `docs`: a [Next.js](https://nextjs.org/) app
-- `web`: another [Next.js](https://nextjs.org/) app
-- `@repo/ui`: a stub React component library shared by both `web` and `docs` applications
-- `@repo/eslint-config`: `eslint` configurations (includes `eslint-config-next` and `eslint-config-prettier`)
-- `@repo/typescript-config`: `tsconfig.json`s used throughout the monorepo
-
-Each package/app is 100% [TypeScript](https://www.typescriptlang.org/).
-
-### Utilities
-
-This Turborepo has some additional tools already setup for you:
-
-- [TypeScript](https://www.typescriptlang.org/) for static type checking
-- [ESLint](https://eslint.org/) for code linting
-- [Prettier](https://prettier.io) for code formatting
-
-### Build
-
-To build all apps and packages, run the following command:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
-
-```sh
-cd my-turborepo
-turbo build
+```env
+# client/.env
+VITE_SUPABASE_URL="https://your-project-ref.supabase.co"
+VITE_SUPABASE_ANON_KEY="your-anon-public-key"
 ```
 
-Without global `turbo`, use your package manager:
+### 3. Setup Supabase Database
+Go to the **Supabase Dashboard** -> **SQL Editor** -> **New Query**, paste the following SQL script, and click **Run** to set up the `employees` table, setup triggers, configure RLS, and seed the initial admin account:
 
-```sh
-cd my-turborepo
-npx turbo build
-npm dlx turbo build
-npm exec turbo build
+```sql
+-- 1. Reset (warning: deletes existing employees table)
+DROP TABLE IF EXISTS employees;
+
+-- 2. Create employees table (holds profiles and credentials)
+CREATE TABLE employees (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name       VARCHAR(255) NOT NULL,
+  email      VARCHAR(255) NOT NULL UNIQUE,
+  phone      VARCHAR(50),
+  password   VARCHAR(255) NOT NULL,
+  role       VARCHAR(50) NOT NULL DEFAULT 'OPERATOR',
+  is_active  BOOLEAN NOT NULL DEFAULT true,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- 3. Auto-update updated_at column function and trigger
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER set_updated_at_employees
+  BEFORE UPDATE ON employees 
+  FOR EACH ROW 
+  EXECUTE FUNCTION update_updated_at_column();
+
+-- 4. Enable Row Level Security (RLS)
+ALTER TABLE employees ENABLE ROW LEVEL SECURITY;
+
+-- 5. RLS Policies
+-- Allow read and write access for both authenticated and anonymous users
+-- (Note: In production, restrict insert/update/delete to specific roles)
+CREATE POLICY "Enable read access for all" ON employees FOR SELECT USING (true);
+CREATE POLICY "Enable insert access for all" ON employees FOR INSERT WITH CHECK (true);
+CREATE POLICY "Enable update access for all" ON employees FOR UPDATE USING (true) WITH CHECK (true);
+CREATE POLICY "Enable delete access for all" ON employees FOR DELETE USING (true);
+
+-- 6. Seed initial Admin User
+INSERT INTO employees (name, email, password, role, phone)
+VALUES ('Admin User', 'admin@printflow.com', 'admin123', 'ADMIN', '+91-9800000000')
+ON CONFLICT (email) DO NOTHING;
 ```
 
-You can build a specific package by using a [filter](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters):
+---
 
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
+## 💻 Running the Application
 
-```sh
-turbo build --filter=docs
-```
+1. **Install Dependencies** (from the `client/` folder):
+   ```bash
+   cd client
+   npm install
+   ```
 
-Without global `turbo`:
+2. **Start the Development Server**:
+   ```bash
+   npm run dev
+   ```
 
-```sh
-npx turbo build --filter=docs
-npm exec turbo build --filter=docs
-npm exec turbo build --filter=docs
-```
+3. **Login Details**:
+   - **Email**: `admin@printflow.com`
+   - **Password**: `admin123`
 
-### Develop
+---
 
-To develop all apps and packages, run the following command:
+## 🛠️ Main Features (Direct Supabase Integration)
 
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
-
-```sh
-cd my-turborepo
-turbo dev
-```
-
-Without global `turbo`, use your package manager:
-
-```sh
-cd my-turborepo
-npx turbo dev
-npm exec turbo dev
-npm exec turbo dev
-```
-
-You can develop a specific package by using a [filter](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters):
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
-
-```sh
-turbo dev --filter=web
-```
-
-Without global `turbo`:
-
-```sh
-npx turbo dev --filter=web
-npm exec turbo dev --filter=web
-npm exec turbo dev --filter=web
-```
-
-### Remote Caching
-
-> [!TIP]
-> Vercel Remote Cache is free for all plans. Get started today at [vercel.com](https://vercel.com/signup?utm_source=remote-cache-sdk&utm_campaign=free_remote_cache).
-
-Turborepo can use a technique known as [Remote Caching](https://turborepo.dev/docs/core-concepts/remote-caching) to share cache artifacts across machines, enabling you to share build caches with your team and CI/CD pipelines.
-
-By default, Turborepo will cache locally. To enable Remote Caching you will need an account with Vercel. If you don't have an account you can [create one](https://vercel.com/signup?utm_source=turborepo-examples), then enter the following commands:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
-
-```sh
-cd my-turborepo
-turbo login
-```
-
-Without global `turbo`, use your package manager:
-
-```sh
-cd my-turborepo
-npx turbo login
-npm exec turbo login
-npm exec turbo login
-```
-
-This will authenticate the Turborepo CLI with your [Vercel account](https://vercel.com/docs/concepts/personal-accounts/overview).
-
-Next, you can link your Turborepo to your Remote Cache by running the following command from the root of your Turborepo:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
-
-```sh
-turbo link
-```
-
-Without global `turbo`:
-
-```sh
-npx turbo link
-npm exec turbo link
-npm exec turbo link
-```
-
-## Useful Links
-
-Learn more about the power of Turborepo:
-
-- [Tasks](https://turborepo.dev/docs/crafting-your-repository/running-tasks)
-- [Caching](https://turborepo.dev/docs/crafting-your-repository/caching)
-- [Remote Caching](https://turborepo.dev/docs/core-concepts/remote-caching)
-- [Filtering](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters)
-- [Configuration Options](https://turborepo.dev/docs/reference/configuration)
-- [CLI Usage](https://turborepo.dev/docs/reference/command-line-reference)
+1. **Authentication**
+   - Validates user credentials directly against the `employees` table in Supabase.
+   - Saves authenticated user details to `localStorage` to persist sessions.
+2. **Employee Management**
+   - **Create**: Add new employees with designated roles (Admin, Sales Executive, Supervisor, Operator, etc.) and passwords.
+   - **Read**: Live search by name, email, or phone; filter by role or status.
+   - **Update**: Edit existing employee details (updates saved to the database).
+   - **Soft Delete/Deactivate**: Toggle the status of an employee to "Inactive" to restrict access.

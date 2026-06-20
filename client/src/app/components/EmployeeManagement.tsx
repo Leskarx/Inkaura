@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   Users, UserPlus, Search, Filter, Edit2, Trash2, Shield,
-  Phone, Mail, Building, CheckCircle, XCircle, Eye, EyeOff,
-  ChevronDown, X, AlertTriangle, UserCog, MoreHorizontal
+  Phone, Mail, CheckCircle, XCircle,
+  ChevronDown, X, AlertTriangle, UserCog
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
@@ -19,15 +19,12 @@ const ROLES = [
   { value: "OPERATOR", label: "Operator", color: "bg-slate-100 text-slate-700 border-slate-200" },
 ];
 
-const DEPARTMENTS = ["Management", "Sales", "Production", "Quality", "Warehouse", "Accounts", "Logistics", "Packaging"];
-
 interface Employee {
   id: string;
   name: string;
   email: string;
   phone: string | null;
   role: string;
-  department: string | null;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -37,12 +34,17 @@ interface FormData {
   name: string;
   email: string;
   phone: string;
-  password: string;
   role: string;
-  department: string;
+  password: string;
 }
 
-const emptyForm: FormData = { name: "", email: "", phone: "", password: "", role: "OPERATOR", department: "" };
+const emptyForm = {
+  name: "",
+  email: "",
+  phone: "",
+  role: "OPERATOR",
+  password: ""
+};
 
 function getRoleMeta(role: string) {
   return ROLES.find((r) => r.value === role) || ROLES[ROLES.length - 1];
@@ -76,7 +78,6 @@ export function EmployeeManagement() {
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<FormData>(emptyForm);
-  const [showPwd, setShowPwd] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
@@ -85,7 +86,7 @@ export function EmployeeManagement() {
   const fetchEmployees = useCallback(async () => {
     setLoading(true);
     try {
-      let query = supabase.from("employees").select("*", { count: "exact" });
+      let query = supabase.from("users").select("*", { count: "exact" });
 
       if (search) {
         query = query.or(`name.ilike.%${search}%,email.ilike.%${search}%,phone.ilike.%${search}%`);
@@ -119,54 +120,94 @@ export function EmployeeManagement() {
     if (successMsg) { const t = setTimeout(() => setSuccessMsg(""), 3000); return () => clearTimeout(t); }
   }, [successMsg]);
 
-  const openCreate = () => { setForm(emptyForm); setEditingId(null); setError(""); setShowPwd(false); setShowModal(true); };
+  const openCreate = () => { setForm(emptyForm); setEditingId(null); setError(""); setShowModal(true); };
   const openEdit = (emp: Employee) => {
-    setForm({ name: emp.name, email: emp.email, phone: emp.phone || "", password: "", role: emp.role, department: emp.department || "" });
-    setEditingId(emp.id); setError(""); setShowPwd(false); setShowModal(true);
+    setForm({
+      name: emp.name,
+      email: emp.email,
+      phone: emp.phone || "",
+      role: emp.role,
+      password: "" // Password field is empty for editing
+    });
+    setEditingId(emp.id); setError(""); setShowModal(true);
   };
 
   const handleSave = async () => {
     if (!form.name || !form.email) { setError("Name and email are required."); return; }
-    if (!editingId && !form.password) { setError("Password is required for new employees."); return; }
-    setSaving(true); setError("");
-    try {
-      const record: Record<string, unknown> = {
-        name: form.name,
-        email: form.email,
-        phone: form.phone || null,
-        role: form.role,
-        department: form.department || null,
-      };
-      // Note: password hashing should be handled via a Supabase DB function or Edge Function.
-      // For now we store it in plain text — set up a DB trigger for bcrypt hashing.
-      if (form.password) record.password = form.password;
 
+    // For creating new users, password is required
+    if (!editingId && !form.password) {
+      setError("Password is required for new employees.");
+      return;
+    }
+
+    setSaving(true);
+    setError("");
+
+    try {
       if (editingId) {
-        // Update
+        // Update existing employee
+        const record: Record<string, unknown> = {
+          name: form.name,
+          email: form.email,
+          phone: form.phone || null,
+          role: form.role,
+        };
+
         const { error: updateError } = await supabase
-          .from("employees")
+          .from("users")
           .update(record)
           .eq("id", editingId);
-        if (updateError) { setError(updateError.message); setSaving(false); return; }
-      } else {
-        // Insert
-        const { error: insertError } = await supabase
-          .from("employees")
-          .insert(record);
-        if (insertError) { setError(insertError.message); setSaving(false); return; }
-      }
 
-      setShowModal(false);
-      setSuccessMsg(editingId ? "Employee updated!" : "Employee created!");
-      fetchEmployees();
-    } catch { setError("Network error."); }
+        if (updateError) {
+          setError(updateError.message);
+          setSaving(false);
+          return;
+        }
+
+        setShowModal(false);
+        setSuccessMsg("Employee updated!");
+        fetchEmployees();
+      } else {
+        // Create new employee via Edge Function
+        const { data, error: invokeError } = await supabase.functions.invoke("create-user", {
+          body: {
+            name: form.name,
+            email: form.email,
+            password: form.password,
+            phone: form.phone || null,
+            role: form.role,
+          },
+        });
+
+        if (invokeError) {
+          console.error("Edge Function error:", invokeError);
+          setError(invokeError.message || "Failed to create user. Please try again.");
+          setSaving(false);
+          return;
+        }
+
+        if (data?.error) {
+          setError(data.error);
+          setSaving(false);
+          return;
+        }
+
+        setShowModal(false);
+        setSuccessMsg("Employee created successfully!");
+        fetchEmployees();
+      }
+    } catch (err) {
+      console.error("Save error:", err);
+      setError("Network error. Please try again.");
+    }
     setSaving(false);
   };
 
   const handleToggleStatus = async (emp: Employee) => {
     try {
       await supabase
-        .from("employees")
+        .from("users")
         .update({ is_active: !emp.is_active })
         .eq("id", emp.id);
       fetchEmployees();
@@ -177,7 +218,7 @@ export function EmployeeManagement() {
     try {
       // Soft-delete: deactivate instead of removing
       await supabase
-        .from("employees")
+        .from("users")
         .update({ is_active: false })
         .eq("id", id);
       setDeleteConfirm(null);
@@ -287,16 +328,16 @@ export function EmployeeManagement() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50/50">
-                {["Employee", "Contact", "Role", "Department", "Status", "Joined", "Actions"].map((h) => (
+                {["Employee", "Contact", "Role", "Status", "Joined", "Actions"].map((h) => (
                   <th key={h} className="text-left text-xs text-slate-500 px-5 py-3 whitespace-nowrap" style={{ fontWeight: 600 }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={7} className="text-center py-12 text-slate-400 text-sm">Loading employees...</td></tr>
+                <tr><td colSpan={6} className="text-center py-12 text-slate-400 text-sm">Loading employees...</td></tr>
               ) : employees.length === 0 ? (
-                <tr><td colSpan={7} className="text-center py-12 text-slate-400 text-sm">No employees found</td></tr>
+                <tr><td colSpan={6} className="text-center py-12 text-slate-400 text-sm">No employees found</td></tr>
               ) : employees.map((emp) => (
                 <tr key={emp.id} className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors">
                   <td className="px-5 py-3">
@@ -314,11 +355,6 @@ export function EmployeeManagement() {
                     </div>
                   </td>
                   <td className="px-5 py-3"><RoleBadge role={emp.role} /></td>
-                  <td className="px-5 py-3">
-                    {emp.department ? (
-                      <span className="flex items-center gap-1.5 text-xs text-slate-600"><Building size={11} /> {emp.department}</span>
-                    ) : <span className="text-xs text-slate-300">—</span>}
-                  </td>
                   <td className="px-5 py-3"><StatusDot active={emp.is_active} /></td>
                   <td className="px-5 py-3 text-xs text-slate-500 whitespace-nowrap">
                     {new Date(emp.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
@@ -402,36 +438,28 @@ export function EmployeeManagement() {
                     className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-400" />
                 </div>
                 <div>
-                  <label className="block text-xs text-slate-700 mb-1.5" style={{ fontWeight: 500 }}>
-                    Password {editingId ? "(leave blank to keep)" : "*"}
-                  </label>
-                  <div className="relative">
-                    <input type={showPwd ? "text" : "password"} value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="••••••••"
-                      className="w-full px-3 pr-9 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-400" />
-                    <button type="button" onClick={() => setShowPwd(!showPwd)} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400">
-                      {showPwd ? <EyeOff size={14} /> : <Eye size={14} />}
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
                   <label className="block text-xs text-slate-700 mb-1.5" style={{ fontWeight: 500 }}>Role *</label>
                   <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}
                     className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-400 appearance-none cursor-pointer bg-white">
                     {ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
                   </select>
                 </div>
-                <div>
-                  <label className="block text-xs text-slate-700 mb-1.5" style={{ fontWeight: 500 }}>Department</label>
-                  <select value={form.department} onChange={(e) => setForm({ ...form, department: e.target.value })}
-                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-400 appearance-none cursor-pointer bg-white">
-                    <option value="">Select department</option>
-                    {DEPARTMENTS.map((d) => <option key={d} value={d}>{d}</option>)}
-                  </select>
-                </div>
               </div>
+
+              {/* Password Field - Only show for new employees */}
+              {!editingId && (
+                <div>
+                  <label className="block text-xs text-slate-700 mb-1.5" style={{ fontWeight: 500 }}>Password *</label>
+                  <input
+                    type="password"
+                    value={form.password}
+                    onChange={(e) => setForm({ ...form, password: e.target.value })}
+                    placeholder="Enter password (min 6 characters)"
+                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-400"
+                  />
+                  <p className="text-xs text-slate-400 mt-1">Password must be at least 6 characters</p>
+                </div>
+              )}
             </div>
 
             <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-slate-100">

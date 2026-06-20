@@ -22,20 +22,45 @@ export function LoginPage({ onLogin, darkMode, onToggleDark }: LoginPageProps) {
     if (!email || !password) { setError("Please enter your credentials."); return; }
     setLoading(true);
     try {
-      const { data, error: authError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-      if (authError) { setError(authError.message); setLoading(false); return; }
-      // Store session info for backward-compat (Supabase also stores in localStorage automatically)
-      if (data.session) {
-        localStorage.setItem("token", data.session.access_token);
-        localStorage.setItem("user", JSON.stringify(data.user));
+      const { data: authData, error: authError } =
+        await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+
+      if (authError) {
+        setError("Invalid email or password.");
+        setLoading(false);
+        return;
       }
+
+      const userId = authData.user.id;
+
+      const { data: profile, error: profileError } =
+        await supabase
+          .from("users")
+          .select("*")
+          .eq("id", userId)
+          .single();
+
+      if (profileError || !profile) {
+        setError("User profile not found.");
+        setLoading(false);
+        return;
+      }
+
+      if (!profile.is_active) {
+        setError("Account is disabled.");
+        setLoading(false);
+        return;
+      }
+
+      localStorage.setItem("user", JSON.stringify(profile));
+
       setLoading(false);
       onLogin();
     } catch {
-      setError("Cannot connect to Supabase.");
+      setError("Cannot connect to server.");
       setLoading(false);
     }
   };

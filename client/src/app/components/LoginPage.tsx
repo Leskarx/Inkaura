@@ -9,8 +9,8 @@ interface LoginPageProps {
 }
 
 export function LoginPage({ onLogin, darkMode, onToggleDark }: LoginPageProps) {
-  const [email, setEmail] = useState("admin@printflow.com");
-  const [password, setPassword] = useState("password");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [remember, setRemember] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -214,11 +214,7 @@ export function LoginPage({ onLogin, darkMode, onToggleDark }: LoginPageProps) {
             </button>
           </form>
 
-          <div className="mt-6 pt-6 border-t border-slate-200">
-            <p className="text-xs text-slate-400 text-center">
-              Demo: <span className="text-slate-600">admin@printflow.com</span> / <span className="text-slate-600">password</span>
-            </p>
-          </div>
+          {/* Removed demo credentials section */}
 
           <p className="mt-8 text-xs text-slate-400 text-center">© 2026 PrintFlow ERP. All rights reserved.</p>
         </div>

@@ -40,7 +40,7 @@ const screenComponents: Record<Screen, React.ReactNode> = {
 };
 
 export default function App() {
-  const [isLoggedIn, setIsLoggedIn]     = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(() => !!localStorage.getItem("user"));
   const [currentScreen, setCurrentScreen] = useState<Screen>("admin");
   const [darkMode, setDarkMode]         = useState(false);
 
@@ -57,7 +57,10 @@ export default function App() {
         <Layout
           currentScreen={currentScreen}
           onNavigate={setCurrentScreen}
-          onLogout={() => setIsLoggedIn(false)}
+          onLogout={() => {
+            localStorage.removeItem("user");
+            setIsLoggedIn(false);
+          }}
           darkMode={darkMode}
           onToggleDark={() => setDarkMode((d) => !d)}
         >

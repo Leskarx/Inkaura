@@ -3,14 +3,28 @@ import {
   LayoutDashboard, ShoppingCart, Users, FileText, Briefcase,
   ClipboardList, Package, Cpu, CheckSquare, Truck, DollarSign,
   Bell, Search, ChevronDown, Settings, LogOut, Menu, X,
-  Printer, ChevronRight, Moon, Sun, BarChart2, FlaskConical,
-  Cog, Factory, Box, UserCog
+  Printer, ChevronRight, Moon, Sun, BarChart2,
+  Cog, Factory, Box, UserCog, Layers
 } from "lucide-react";
 
 export type Screen =
-  | "admin" | "employees" | "sales" | "customers" | "quotations" | "jobs"
-  | "supervisor" | "inventory" | "operator" | "qc" | "dispatch" | "finance"
-  | "sample" | "machines" | "production" | "packaging" | "reports";
+  | "admin"
+  | "employees"
+  | "sales"
+  | "customers"
+  | "quotations"
+  | "sample-jobs"      // Replaces "jobs" and "sample"
+  | "production-jobs"  // Replaces both
+  | "supervisor"
+  | "inventory"
+  | "operator"
+  | "qc"
+  | "dispatch"
+  | "finance"
+  | "machines"
+  | "production"
+  | "packaging"
+  | "reports";
 
 interface NavItem {
   id: Screen;
@@ -23,47 +37,47 @@ const navGroups: { label: string; items: NavItem[] }[] = [
   {
     label: "Overview",
     items: [
-      { id: "admin",     label: "Admin Dashboard",     icon: <LayoutDashboard size={15} /> },
+      { id: "admin", label: "Admin Dashboard", icon: <LayoutDashboard size={15} /> },
       { id: "employees", label: "Employee Management", icon: <UserCog size={15} /> },
-      { id: "reports",   label: "Reports & Analytics",  icon: <BarChart2 size={15} /> },
+      { id: "reports", label: "Reports & Analytics", icon: <BarChart2 size={15} /> },
     ],
   },
   {
     label: "Sales & CRM",
     items: [
-      { id: "sales",      label: "Sales Dashboard", icon: <ShoppingCart size={15} />, badge: 5 },
-      { id: "customers",  label: "Customers",       icon: <Users size={15} /> },
-      { id: "quotations", label: "Quotations",      icon: <FileText size={15} />, badge: 3 },
+      { id: "sales", label: "Sales Dashboard", icon: <ShoppingCart size={15} />, badge: 5 },
+      { id: "customers", label: "Customers", icon: <Users size={15} /> },
+      { id: "quotations", label: "Quotations", icon: <FileText size={15} />, badge: 3 },
     ],
   },
   {
-    label: "Job Management",
+    label: "Operations",
     items: [
-      { id: "jobs",   label: "Job Management",  icon: <Briefcase size={15} />, badge: 12 },
-      { id: "sample", label: "Sample Approval", icon: <FlaskConical size={15} />, badge: 4 },
+      { id: "sample-jobs", label: "Sample Jobs", icon: <Layers size={15} />, badge: 4 },
+      { id: "production-jobs", label: "Production Jobs", icon: <Briefcase size={15} />, badge: 12 },
+      { id: "supervisor", label: "Supervisor Dashboard", icon: <ClipboardList size={15} /> },
     ],
   },
   {
     label: "Production",
     items: [
-      { id: "supervisor",  label: "Supervisor Dashboard", icon: <ClipboardList size={15} /> },
-      { id: "production",  label: "Production Floor",     icon: <Factory size={15} /> },
-      { id: "machines",    label: "Machine Management",   icon: <Cog size={15} />, badge: 1 },
-      { id: "operator",    label: "Machine Operator",     icon: <Cpu size={15} /> },
+      { id: "production", label: "Production Floor", icon: <Factory size={15} /> },
+      { id: "machines", label: "Machine Management", icon: <Cog size={15} />, badge: 1 },
+      { id: "operator", label: "Machine Operator", icon: <Cpu size={15} /> },
     ],
   },
   {
     label: "Quality & Packaging",
     items: [
-      { id: "qc",        label: "Quality Control", icon: <CheckSquare size={15} />, badge: 4 },
-      { id: "packaging", label: "Packaging",       icon: <Box size={15} /> },
+      { id: "qc", label: "Quality Control", icon: <CheckSquare size={15} />, badge: 4 },
+      { id: "packaging", label: "Packaging", icon: <Box size={15} /> },
     ],
   },
   {
     label: "Inventory & Dispatch",
     items: [
-      { id: "inventory", label: "Inventory",   icon: <Package size={15} />, badge: 2 },
-      { id: "dispatch",  label: "Dispatch",    icon: <Truck size={15} /> },
+      { id: "inventory", label: "Inventory", icon: <Package size={15} />, badge: 2 },
+      { id: "dispatch", label: "Dispatch", icon: <Truck size={15} /> },
     ],
   },
   {
@@ -82,36 +96,36 @@ interface LayoutProps {
 }
 
 const screenTitles: Record<Screen, string> = {
-  admin:      "Admin Dashboard",
-  employees:  "Employee Management",
-  reports:    "Reports & Analytics",
-  sales:      "Sales Dashboard",
-  customers:  "Customer Management",
+  admin: "Admin Dashboard",
+  employees: "Employee Management",
+  reports: "Reports & Analytics",
+  sales: "Sales Dashboard",
+  customers: "Customer Management",
   quotations: "Quotation Management",
-  jobs:       "Job Management",
-  sample:     "Sample Approval",
+  "sample-jobs": "Sample Jobs",
+  "production-jobs": "Production Jobs",
   supervisor: "Supervisor Dashboard",
   production: "Production Floor",
-  machines:   "Machine Management",
-  operator:   "Machine Operator",
-  qc:         "Quality Control",
-  packaging:  "Packaging",
-  inventory:  "Inventory Management",
-  dispatch:   "Dispatch Management",
-  finance:    "Finance & Reports",
+  machines: "Machine Management",
+  operator: "Machine Operator",
+  qc: "Quality Control",
+  packaging: "Packaging",
+  inventory: "Inventory Management",
+  dispatch: "Dispatch Management",
+  finance: "Finance & Reports",
 };
 
 export function Layout({ currentScreen, onNavigate, onLogout, children }: LayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [notifOpen, setNotifOpen]     = useState(false);
+  const [notifOpen, setNotifOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
 
   const notifications = [
-    { id: 1, text: "Job #JB-0042 ready for QC inspection",       time: "2m ago",  type: "info" },
-    { id: 2, text: "Low stock alert: Cyan Ink (12 units left)",   time: "15m ago", type: "warning" },
-    { id: 3, text: "Quotation #QT-0089 approved by client",       time: "1h ago",  type: "success" },
-    { id: 4, text: "Machine PM-3 scheduled maintenance overdue",  time: "3h ago",  type: "error" },
-    { id: 5, text: "Sample #SMP-0012 approved by Apex Beverages", time: "5h ago",  type: "success" },
+    { id: 1, text: "Sample SJ-0001 awaiting customer approval", time: "2m ago", type: "info" },
+    { id: 2, text: "Low stock alert: Cyan Ink (12 units left)", time: "15m ago", type: "warning" },
+    { id: 3, text: "Quotation #QT-0089 approved by client", time: "1h ago", type: "success" },
+    { id: 4, text: "Machine PM-3 scheduled maintenance overdue", time: "3h ago", type: "error" },
+    { id: 5, text: "Production PJ-0001 passed QC inspection", time: "5h ago", type: "success" },
   ];
 
   return (
@@ -255,9 +269,8 @@ export function Layout({ currentScreen, onNavigate, onLogout, children }: Layout
                 </div>
                 {notifications.map((n) => (
                   <div key={n.id} className="flex gap-3 px-4 py-3 hover:bg-slate-50 border-b border-border cursor-pointer transition-colors">
-                    <div className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${
-                      n.type === "warning" ? "bg-amber-500" : n.type === "success" ? "bg-green-500" : n.type === "error" ? "bg-red-500" : "bg-indigo-500"
-                    }`} />
+                    <div className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${n.type === "warning" ? "bg-amber-500" : n.type === "success" ? "bg-green-500" : n.type === "error" ? "bg-red-500" : "bg-indigo-500"
+                      }`} />
                     <div className="min-w-0">
                       <p className="text-xs text-slate-700 leading-relaxed">{n.text}</p>
                       <p className="text-xs text-slate-400 mt-0.5">{n.time}</p>

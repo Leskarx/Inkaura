@@ -78,8 +78,6 @@ interface LayoutProps {
   currentScreen: Screen;
   onNavigate: (screen: Screen) => void;
   onLogout: () => void;
-  darkMode: boolean;
-  onToggleDark: () => void;
   children: React.ReactNode;
 }
 
@@ -103,7 +101,7 @@ const screenTitles: Record<Screen, string> = {
   finance:    "Finance & Reports",
 };
 
-export function Layout({ currentScreen, onNavigate, onLogout, darkMode, onToggleDark, children }: LayoutProps) {
+export function Layout({ currentScreen, onNavigate, onLogout, children }: LayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [notifOpen, setNotifOpen]     = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -235,14 +233,7 @@ export function Layout({ currentScreen, onNavigate, onLogout, darkMode, onToggle
             />
           </div>
 
-          {/* Dark toggle */}
-          <button
-            onClick={onToggleDark}
-            className="flex items-center justify-center w-8 h-8 rounded-lg border border-slate-200 text-slate-500 hover:text-indigo-600 hover:border-indigo-300 transition-all flex-shrink-0"
-            title={darkMode ? "Light mode" : "Dark mode"}
-          >
-            {darkMode ? <Sun size={14} /> : <Moon size={14} />}
-          </button>
+
 
           {/* Notifications */}
           <div className="relative flex-shrink-0">

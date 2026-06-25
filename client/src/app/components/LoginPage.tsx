@@ -4,11 +4,9 @@ import { supabase } from "@/lib/supabase";
 
 interface LoginPageProps {
   onLogin: () => void;
-  darkMode: boolean;
-  onToggleDark: () => void;
 }
 
-export function LoginPage({ onLogin, darkMode, onToggleDark }: LoginPageProps) {
+export function LoginPage({ onLogin }: LoginPageProps) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -123,14 +121,7 @@ export function LoginPage({ onLogin, darkMode, onToggleDark }: LoginPageProps) {
 
       {/* Right panel */}
       <div className="flex-1 flex items-center justify-center p-6 lg:p-16 relative">
-        {/* Dark mode toggle (top-right) */}
-        <button
-          onClick={onToggleDark}
-          className="absolute top-6 right-6 flex items-center justify-center w-9 h-9 rounded-xl border border-slate-200 text-slate-500 hover:text-indigo-600 hover:border-indigo-300 transition-all"
-          title={darkMode ? "Light mode" : "Dark mode"}
-        >
-          {darkMode ? <Sun size={16} /> : <Moon size={16} />}
-        </button>
+
 
         <div className="w-full max-w-md">
           {/* Mobile logo */}

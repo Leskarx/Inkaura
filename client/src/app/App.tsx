@@ -42,16 +42,13 @@ const screenComponents: Record<Screen, React.ReactNode> = {
 export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(() => !!localStorage.getItem("user"));
   const [currentScreen, setCurrentScreen] = useState<Screen>("admin");
-  const [darkMode, setDarkMode]         = useState(false);
 
   return (
     /* MARKER-MAKE-KIT-INVOKED */
-    <div className={`size-full ${darkMode ? "dark" : ""}`} style={{ colorScheme: darkMode ? "dark" : "light" }}>
+    <div className={`size-full`} style={{ colorScheme: "light" }}>
       {!isLoggedIn ? (
         <LoginPage
           onLogin={() => setIsLoggedIn(true)}
-          darkMode={darkMode}
-          onToggleDark={() => setDarkMode((d) => !d)}
         />
       ) : (
         <Layout
@@ -61,8 +58,6 @@ export default function App() {
             localStorage.removeItem("user");
             setIsLoggedIn(false);
           }}
-          darkMode={darkMode}
-          onToggleDark={() => setDarkMode((d) => !d)}
         >
           {screenComponents[currentScreen]}
         </Layout>

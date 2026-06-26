@@ -324,6 +324,109 @@ export const api = {
         }
     },
 
+    getQuotationById: async (id: string): Promise<QuotationData | null> => {
+        try {
+            const { data, error } = await supabase
+                .from('quotations')
+                .select(`
+                    *,
+                    customers:customer_id(company_name),
+                    employees:created_by(full_name),
+                    quotation_products(*),
+                    cost_estimations(*),
+                    sample_orders(sample_order_id, status),
+                    production_orders(production_order_id, status)
+                `)
+                .eq('quotation_id', id)
+                .single();
+
+            if (error) throw error;
+            if (!data) return null;
+            return mapToQuotationData(data);
+        } catch (error) {
+            console.error('Error fetching quotation by id:', error);
+            throw error;
+        }
+    },
+
+    getQuotationForEdit: async (id: string): Promise<any | null> => {
+        try {
+            const { data, error } = await supabase
+                .from('quotations')
+                .select(`*, quotation_products(*)`)
+                .eq('quotation_id', id)
+                .single();
+            if (error) throw error;
+            return data;
+        } catch (error) {
+            console.error('Error fetching quotation for edit:', error);
+            throw error;
+        }
+    },
+
+    updateQuotationStatus: async (id: string, status: string): Promise<void> => {
+        try {
+            const { error } = await supabase
+                .from('quotations')
+                .update({ status })
+                .eq('quotation_id', id);
+            if (error) throw error;
+        } catch (error) {
+            console.error('Error updating quotation status:', error);
+            throw error;
+        }
+    },
+
+    updateQuotation: async (id: string, payload: {
+        customer_id: string;
+        quotation_date: string;
+        total_payment: number;
+        advance_percentage: number;
+        notes?: string;
+        created_by: number;
+        products: any[];
+    }): Promise<void> => {
+        try {
+            // Update Quotation
+            const { error: qError } = await supabase.from('quotations').update({
+                customer_id: payload.customer_id,
+                quotation_date: payload.quotation_date,
+                total_payment: payload.total_payment,
+                advance_percentage: payload.advance_percentage,
+                notes: payload.notes,
+                created_by: payload.created_by,
+            }).eq('quotation_id', id);
+            
+            if (qError) throw qError;
+
+            // Delete old products
+            const { error: delError } = await supabase.from('quotation_products').delete().eq('quotation_id', id);
+            if (delError) throw delError;
+
+            // Insert new Products
+            if (payload.products && payload.products.length > 0) {
+                const productsToInsert = payload.products.map(p => ({
+                    quotation_id: id,
+                    product_name: p.product_name,
+                    product_type: p.product_type || 'Custom',
+                    production_quantity: p.production_quantity,
+                    material_type: p.material_type || 'Standard',
+                    paper_gsm: p.paper_gsm || 0,
+                    width_cm: p.width_cm || 0,
+                    height_cm: p.height_cm || 0,
+                    printing_technology: p.printing_technology || 'Offset',
+                    color_sides: p.color_sides || 'Single',
+                    color_type: p.color_type || 'CMYK'
+                }));
+                const { error: pError } = await supabase.from('quotation_products').insert(productsToInsert);
+                if (pError) throw pError;
+            }
+        } catch (error) {
+            console.error('Error updating quotation:', error);
+            throw error;
+        }
+    },
+
     // ==================== SAMPLE JOBS ====================
 
     getSampleJobs: async (): Promise<SampleJob[]> => {

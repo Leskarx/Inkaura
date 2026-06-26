@@ -37,12 +37,25 @@ const isCommerciallyCleared = (q: QuotationData) => {
 interface QuotationDetailProps {
   quotation: QuotationData;
   onClose: () => void;
+  onUpdate: () => void;
 }
 
-function QuotationDetail({ quotation: q, onClose }: QuotationDetailProps) {
+function QuotationDetail({ quotation: q, onClose, onUpdate }: QuotationDetailProps) {
+  const navigate = useNavigate();
   const locked = isLocked(q);
   const cleared = isCommerciallyCleared(q);
   const requiredAdvance = (q.commercials.total * q.commercials.advanceRequiredPct) / 100;
+
+  const handleUpdateStatus = async (status: string) => {
+    try {
+      await api.updateQuotationStatus(q.id, status);
+      onUpdate();
+      onClose();
+    } catch (err) {
+      console.error("Failed to update status", err);
+      alert("Failed to update status");
+    }
+  };
 
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -192,6 +205,21 @@ function QuotationDetail({ quotation: q, onClose }: QuotationDetailProps) {
             </div>
           </div>
         </div>
+
+        {/* Action Footer */}
+        <div className="p-4 border-t border-slate-100 bg-slate-50 rounded-b-2xl flex justify-between items-center shrink-0">
+          <button onClick={() => navigate(`/quotations/edit/${q.id}`)} className="px-4 py-2 text-sm font-semibold text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors">
+            Edit Quotation
+          </button>
+          <div className="flex gap-2">
+             <button onClick={() => handleUpdateStatus('Rejected')} className="px-4 py-2 text-sm font-semibold text-red-700 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-colors">
+               Mark Rejected
+             </button>
+             <button onClick={() => handleUpdateStatus('Approved')} className="px-4 py-2 text-sm font-semibold text-green-700 bg-green-50 border border-green-200 rounded-lg hover:bg-green-100 transition-colors">
+               Mark Approved
+             </button>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -234,7 +262,7 @@ export function QuotationManagement() {
 
   return (
     <div className="p-6 space-y-6 max-w-[1600px] mx-auto">
-      {selected && <QuotationDetail quotation={selected} onClose={() => setSelected(null)} />}
+      {selected && <QuotationDetail quotation={selected} onClose={() => setSelected(null)} onUpdate={fetchQuotations} />}
 
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>

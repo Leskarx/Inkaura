@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../server/api";
 import { 
   Plus, Trash2, Save, Send, AlertCircle, FileText, 
   ChevronRight, Box, Package, FileUp, Info, Search, ChevronDown
 } from "lucide-react";
 
-export function CreateQuotationPage() {
+export function EditQuotationPage() {
   const navigate = useNavigate();
+  const { id } = useParams();
   const [loading, setLoading] = useState(false);
   const [customers, setCustomers] = useState<{id: string, name: string, contact_person: string}[]>([]);
   const [employees, setEmployees] = useState<{id: number, name: string}[]>([]);
@@ -111,15 +112,104 @@ export function CreateQuotationPage() {
     artwork_instructions: ""
   });
 
-  // Fetch dropdown data
+  // Fetch dropdown data and initial quotation data
   useEffect(() => {
-    api.getCustomers().then(c => {
-      setCustomers(c.map(x => ({id: x.id, name: x.name, contact_person: (x as any).contact_person || ""})));
-    });
-    api.getEmployees().then(e => {
-      setEmployees(e.map(x => ({id: Number(x.id), name: x.name})));
-    });
-  }, []);
+    const init = async () => {
+      try {
+        const [c, e] = await Promise.all([
+          api.getCustomers(),
+          api.getEmployees()
+        ]);
+        setCustomers(c.map(x => ({id: x.id, name: x.name, contact_person: (x as any).contact_person || ""})));
+        setEmployees(e.map(x => ({id: Number(x.id), name: x.name})));
+
+        if (id) {
+          const q = await api.getQuotationForEdit(id);
+          if (q) {
+            setBasicInfo({
+              customer_id: q.customer_id || "",
+              created_by: q.created_by || 0,
+              quotation_date: q.quotation_date ? new Date(q.quotation_date).toISOString().split("T")[0] : new Date().toISOString().split("T")[0],
+              valid_until: q.delivery_date ? new Date(q.delivery_date).toISOString().split("T")[0] : "",
+              currency: "INR",
+              reference_number: "",
+            });
+            
+            if (q.quotation_products && q.quotation_products.length > 0) {
+              setProducts(q.quotation_products.map((p: any, idx: number) => ({
+                id: p.quotation_product_id || idx,
+                product_name: p.product_name || "",
+                product_type: p.product_type || "Custom",
+                production_quantity: p.production_quantity || 1000,
+                sample_quantity: 0,
+                material_type: p.material_type || "",
+                paper_type: "",
+                gsm: p.paper_gsm || 0,
+                thickness: "",
+                width_mm: (p.width_cm || 0) * 10,
+                height_mm: (p.height_cm || 0) * 10,
+                depth_mm: 0,
+                printing_technology: p.printing_technology || "Offset",
+                front_colors: p.color_type === 'CMYK' ? 4 : 1,
+                back_colors: 0,
+                spot_colors: 0,
+                lamination: p.lamination || "",
+                uv_coating: false,
+                embossing: false,
+                foiling: false,
+                die_cutting: false,
+                folding: false,
+                binding: "",
+                packaging_type: p.packaging_type || "",
+                cartons: 0,
+                special_instructions: "",
+                _frontend_price: Number(q.total_payment) / q.quotation_products.length
+              })));
+            }
+
+            setCommercials({
+              payment_terms: `${q.advance_percentage || 50}% Advance, ${100 - (q.advance_percentage || 50)}% Against Delivery`,
+              advance_percentage: q.advance_percentage || 50,
+              gst_percentage: 18,
+              discount: 0,
+              freight_charges: 0,
+              packing_charges: 0,
+              other_charges: 0
+            });
+            
+            let parsedCustomerNotes = q.notes || "";
+            let parsedInternalNotes = "";
+            
+            if (parsedCustomerNotes.includes("---JSON_META_DATA---")) {
+              const parts = parsedCustomerNotes.split("---JSON_META_DATA---");
+              parsedCustomerNotes = parts[0].trim();
+              try {
+                const meta = JSON.parse(parts[1].trim());
+                if (meta.sampleReq) setSampleReq(meta.sampleReq);
+                if (meta.delivery) setDelivery(meta.delivery);
+                if (meta.costSummary) setCostSummary(meta.costSummary);
+              } catch (e) {}
+            }
+            
+            if (parsedCustomerNotes.includes("Internal: ")) {
+               const parts = parsedCustomerNotes.split("Internal: ");
+               parsedCustomerNotes = parts[0].trim();
+               parsedInternalNotes = parts[1].trim();
+            }
+
+            setNotes({
+              customer_notes: parsedCustomerNotes,
+              internal_notes: parsedInternalNotes,
+              artwork_instructions: ""
+            });
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load edit data", err);
+      }
+    };
+    init();
+  }, [id]);
 
   const handleAddProduct = () => {
     setProducts([...products, {
@@ -179,7 +269,8 @@ export function CreateQuotationPage() {
         }))
       };
 
-      await api.createQuotation(payload as any);
+      if (!id) return;
+      await api.updateQuotation(id, payload as any);
       navigate("/quotations");
     } catch (err) {
       console.error(err);
@@ -193,8 +284,8 @@ export function CreateQuotationPage() {
     <div className="p-6 max-w-5xl mx-auto space-y-8 pb-32">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Create Quotation</h1>
-          <p className="text-slate-500 text-sm mt-1">Configure pricing, products, and specifications.</p>
+          <h1 className="text-2xl font-bold text-slate-900">Edit Quotation {id}</h1>
+          <p className="text-slate-500 text-sm mt-1">Update pricing, products, and specifications.</p>
         </div>
         <button onClick={() => navigate("/quotations")} className="text-sm font-medium text-slate-500 hover:text-slate-800">
           Cancel & Go Back
@@ -291,10 +382,12 @@ export function CreateQuotationPage() {
 
       {/* 3. Products Section */}
       <section className="space-y-4">
-        <div className="flex justify-between items-center">
-          <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-            <Box size={18} className="text-indigo-500" /> Products
-          </h2>
+        <div className="flex justify-between items-center bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+          <div>
+            <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+              <Box size={18} className="text-indigo-500" /> Products
+            </h2>
+          </div>
           <button onClick={handleAddProduct} className="flex items-center gap-1.5 text-sm font-medium text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-lg hover:bg-indigo-100 transition-colors">
             <Plus size={16} /> Add Product
           </button>
@@ -572,14 +665,9 @@ export function CreateQuotationPage() {
              Save as Draft
            </button>
            <button 
-             onClick={() => handleSave('Pending')} disabled={loading}
-             className="px-5 py-2.5 rounded-lg text-sm font-semibold bg-amber-100 text-amber-700 hover:bg-amber-200 transition-colors border border-amber-200">
-             Request Internal Review
-           </button>
-           <button 
-             onClick={() => handleSave('Sent')} disabled={loading}
+             onClick={() => handleSave('Approved')} disabled={loading}
              className="flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-semibold bg-indigo-600 text-white hover:bg-indigo-700 transition-colors shadow-sm">
-             <Send size={16} /> Save & Send to Customer
+             <Save size={16} /> Save & Mark Approved
            </button>
          </div>
       </div>

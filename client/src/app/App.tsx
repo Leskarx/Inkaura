@@ -20,6 +20,7 @@ import { PackagingDashboard } from "./components/PackagingDashboard";
 import { ReportsAnalytics } from "./components/ReportsAnalytics";
 import { EmployeeManagement } from "./components/EmployeeManagement";
 import { CreateQuotationPage } from "./components/CreateQuotationPage";
+import { EditQuotationPage } from "./components/EditQuotationPage";
 
 export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(() => !!localStorage.getItem("user"));
@@ -48,6 +49,7 @@ export default function App() {
               <Route path="/customers" element={<CustomerManagement />} />
               <Route path="/quotations" element={<QuotationManagement />} />
               <Route path="/quotations/create" element={<CreateQuotationPage />} />
+              <Route path="/quotations/edit/:id" element={<EditQuotationPage />} />
               <Route path="/sample-jobs" element={<SampleJobs />} />
               <Route path="/production-jobs" element={<ProductionJobs />} />
               <Route path="/supervisor" element={<SupervisorDashboard />} />

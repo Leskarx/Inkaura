@@ -49,26 +49,42 @@ function QuotationDetail({ quotation: q, onClose, onUpdate }: QuotationDetailPro
 
   // State for Create Production Job modal
   const [showCreateProductionModal, setShowCreateProductionModal] = useState(false);
-  const [machines, setMachines] = useState<{ id: string, name: string }[]>([]);
-  const [employees, setEmployees] = useState<{ id: string, name: string }[]>([]);
+  const [machines, setMachines] = useState<{ id: number, name: string, type: string, status: string }[]>([]);
+  const [employees, setEmployees] = useState<{ id: number, name: string, role: string }[]>([]);
+  const [loadingDropdowns, setLoadingDropdowns] = useState(false);
+  const [dropdownError, setDropdownError] = useState<string | null>(null);
   const [productionForm, setProductionForm] = useState({
-    machineId: "",
-    operatorId: "",
+    machineId: 0,
+    operatorId: 0,
     priority: "Medium" as Priority,
     deliveryDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-    productId: q.products[0]?.id || 0,
   });
   const [creating, setCreating] = useState(false);
 
   // Fetch dropdown data when modal opens
   useEffect(() => {
     if (showCreateProductionModal) {
-      api.getMachines().then(m => {
-        setMachines(m.map(x => ({ id: x.id, name: x.name })));
-      });
-      api.getEmployees().then(e => {
-        setEmployees(e.map(x => ({ id: x.id, name: x.name })));
-      });
+      const fetchDropdowns = async () => {
+        setLoadingDropdowns(true);
+        setDropdownError(null);
+        try {
+          console.log("Fetching machines...");
+          const machinesData = await api.getMachines();
+          console.log("Machines data:", machinesData);
+          setMachines(machinesData);
+
+          console.log("Fetching employees...");
+          const employeesData = await api.getEmployees();
+          console.log("Employees data:", employeesData);
+          setEmployees(employeesData);
+        } catch (err) {
+          console.error("Error fetching dropdown data:", err);
+          setDropdownError("Failed to load machines or employees. Please try again.");
+        } finally {
+          setLoadingDropdowns(false);
+        }
+      };
+      fetchDropdowns();
     }
   }, [showCreateProductionModal]);
 
@@ -84,20 +100,27 @@ function QuotationDetail({ quotation: q, onClose, onUpdate }: QuotationDetailPro
   };
 
   const handleCreateProduction = async () => {
-    if (!productionForm.machineId) {
+    if (!productionForm.machineId || productionForm.machineId === 0) {
       alert("Please select a machine");
       return;
     }
-    if (!productionForm.operatorId) {
+    if (!productionForm.operatorId || productionForm.operatorId === 0) {
       alert("Please select an operator");
       return;
     }
 
     try {
       setCreating(true);
+      console.log("Creating production job with payload:", {
+        quotationId: q.id,
+        deliveryDate: productionForm.deliveryDate,
+        machineId: productionForm.machineId,
+        operatorId: productionForm.operatorId,
+        priority: productionForm.priority,
+      });
+
       await api.createProductionJob({
         quotationId: q.id,
-        productId: productionForm.productId,
         deliveryDate: productionForm.deliveryDate,
         machineId: productionForm.machineId,
         operatorId: productionForm.operatorId,
@@ -314,50 +337,77 @@ function QuotationDetail({ quotation: q, onClose, onUpdate }: QuotationDetailPro
                 <p className="font-semibold text-slate-900">{q.id}</p>
                 <p className="text-sm text-slate-600">{q.customer}</p>
                 <p className="text-sm font-bold text-indigo-600 mt-1">₹{q.commercials.total.toLocaleString()}</p>
-              </div>
-
-              {/* Product */}
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Product</label>
-                <select
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400"
-                  value={productionForm.productId}
-                  onChange={(e) => setProductionForm({ ...productionForm, productId: Number(e.target.value) })}
-                >
-                  {q.products.map((p, i) => (
-                    <option key={i} value={p.id || i + 1}>{p.desc}</option>
-                  ))}
-                </select>
+                {q.products && q.products.length > 0 && (
+                  <div className="mt-2 pt-2 border-t border-slate-200">
+                    <p className="text-xs text-slate-500">Products</p>
+                    <p className="text-sm text-slate-700">{q.products[0].desc}</p>
+                    <p className="text-xs text-slate-500">Qty: {q.products[0].qty.toLocaleString()} units</p>
+                  </div>
+                )}
               </div>
 
               {/* Machine */}
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Machine</label>
-                <select
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400"
-                  value={productionForm.machineId}
-                  onChange={(e) => setProductionForm({ ...productionForm, machineId: e.target.value })}
-                >
-                  <option value="">Select Machine</option>
-                  {machines.map((m) => (
-                    <option key={m.id} value={m.id}>{m.name}</option>
-                  ))}
-                </select>
+                {loadingDropdowns ? (
+                  <div className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-400 bg-slate-50">
+                    Loading machines...
+                  </div>
+                ) : dropdownError ? (
+                  <div className="text-red-600 text-sm">{dropdownError}</div>
+                ) : (
+                  <select
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400"
+                    value={productionForm.machineId}
+                    onChange={(e) => setProductionForm({ ...productionForm, machineId: Number(e.target.value) })}
+                  >
+                    <option value="0">Select Machine</option>
+                    {machines.length === 0 ? (
+                      <option value="" disabled>No machines available</option>
+                    ) : (
+                      machines.map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.name} {m.type ? `(${m.type})` : ''} {m.status ? `- ${m.status}` : ''}
+                        </option>
+                      ))
+                    )}
+                  </select>
+                )}
+                {!loadingDropdowns && machines.length === 0 && !dropdownError && (
+                  <p className="text-xs text-amber-600 mt-1">No machines found in the system. Please add machines first.</p>
+                )}
               </div>
 
               {/* Operator */}
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Operator</label>
-                <select
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400"
-                  value={productionForm.operatorId}
-                  onChange={(e) => setProductionForm({ ...productionForm, operatorId: e.target.value })}
-                >
-                  <option value="">Select Operator</option>
-                  {employees.map((e) => (
-                    <option key={e.id} value={e.id}>{e.name}</option>
-                  ))}
-                </select>
+                {loadingDropdowns ? (
+                  <div className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-400 bg-slate-50">
+                    Loading operators...
+                  </div>
+                ) : dropdownError ? (
+                  <div className="text-red-600 text-sm">{dropdownError}</div>
+                ) : (
+                  <select
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400"
+                    value={productionForm.operatorId}
+                    onChange={(e) => setProductionForm({ ...productionForm, operatorId: Number(e.target.value) })}
+                  >
+                    <option value="0">Select Operator</option>
+                    {employees.length === 0 ? (
+                      <option value="" disabled>No operators available</option>
+                    ) : (
+                      employees.map((e) => (
+                        <option key={e.id} value={e.id}>
+                          {e.name} {e.role ? `(${e.role})` : ''}
+                        </option>
+                      ))
+                    )}
+                  </select>
+                )}
+                {!loadingDropdowns && employees.length === 0 && !dropdownError && (
+                  <p className="text-xs text-amber-600 mt-1">No employees found in the system. Please add employees first.</p>
+                )}
               </div>
 
               {/* Priority */}
@@ -395,7 +445,7 @@ function QuotationDetail({ quotation: q, onClose, onUpdate }: QuotationDetailPro
               </button>
               <button
                 onClick={handleCreateProduction}
-                disabled={creating}
+                disabled={creating || loadingDropdowns}
                 className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               >
                 {creating ? (

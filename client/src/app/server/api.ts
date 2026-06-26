@@ -736,11 +736,11 @@ export const api = {
         }
     },
 
-    getMachines: async (): Promise<{ id: number; name: string; type: string; status: string }[]> => {
+    getMachines: async (): Promise<{ id: number; name: string; type: string; status: string; code?: string; isOperational?: boolean }[]> => {
         try {
             const { data, error } = await supabase
                 .from('machines')
-                .select('machine_id, machine_name, machine_type, status')
+                .select('machine_id, machine_code, machine_name, machine_type, status, is_operational')
                 .order('machine_name');
 
             if (error) throw error;
@@ -751,9 +751,11 @@ export const api = {
 
             return data.map((machine: any) => ({
                 id: machine.machine_id,
+                code: machine.machine_code,
                 name: machine.machine_name,
                 type: machine.machine_type,
-                status: machine.status,
+                status: machine.status || 'Active',
+                isOperational: machine.is_operational !== undefined ? machine.is_operational : true,
             }));
         } catch (error) {
             console.error('Error fetching machines:', error);

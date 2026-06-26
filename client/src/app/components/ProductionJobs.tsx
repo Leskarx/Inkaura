@@ -8,11 +8,41 @@ import {
 import { api, ProductionJob, ProductionStatus, Priority } from "../server/api";
 
 const statusConfig: Record<ProductionStatus, { label: string; bg: string; text: string; border: string; icon: React.ReactNode }> = {
-    "Pending": { label: "Pending", bg: "bg-slate-50", text: "text-slate-600", border: "border-slate-200", icon: <Clock size={12} /> },
-    "In Progress": { label: "In Progress", bg: "bg-indigo-50", text: "text-indigo-700", border: "border-indigo-200", icon: <AlertCircle size={12} /> },
-    "QC Pending": { label: "QC Pending", bg: "bg-amber-50", text: "text-amber-700", border: "border-amber-200", icon: <AlertCircle size={12} /> },
-    "Completed": { label: "Completed", bg: "bg-green-50", text: "text-green-700", border: "border-green-200", icon: <CheckCircle size={12} /> },
-    "Dispatched": { label: "Dispatched", bg: "bg-purple-50", text: "text-purple-700", border: "border-purple-200", icon: <Truck size={12} /> },
+    "Pending": {
+        label: "Pending",
+        bg: "bg-slate-50",
+        text: "text-slate-600",
+        border: "border-slate-200",
+        icon: <Clock size={12} />
+    },
+    "In Progress": {
+        label: "In Progress",
+        bg: "bg-indigo-50",
+        text: "text-indigo-700",
+        border: "border-indigo-200",
+        icon: <AlertCircle size={12} />
+    },
+    "QC Pending": {
+        label: "QC Pending",
+        bg: "bg-amber-50",
+        text: "text-amber-700",
+        border: "border-amber-200",
+        icon: <AlertCircle size={12} />
+    },
+    "Completed": {
+        label: "Completed",
+        bg: "bg-green-50",
+        text: "text-green-700",
+        border: "border-green-200",
+        icon: <CheckCircle size={12} />
+    },
+    "Dispatched": {
+        label: "Dispatched",
+        bg: "bg-purple-50",
+        text: "text-purple-700",
+        border: "border-purple-200",
+        icon: <Truck size={12} />
+    },
 };
 
 const priorityColors: Record<Priority, string> = {
@@ -30,7 +60,6 @@ const progressColors: Record<ProductionStatus, string> = {
 };
 
 export function ProductionJobs() {
-    const location = useLocation();
     const [productionJobs, setProductionJobs] = useState<ProductionJob[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -60,19 +89,10 @@ export function ProductionJobs() {
         loadProductionJobs();
     }, []);
 
-    // Handle navigation from sample approval
-    useEffect(() => {
-        if (location.state?.sampleJobId) {
-            // Auto-refresh to show new production job
-            loadProductionJobs();
-        }
-    }, [location.state]);
-
     const filtered = productionJobs.filter((job) => {
         const matchesSearch = job.id.toLowerCase().includes(search.toLowerCase()) ||
             job.customer.toLowerCase().includes(search.toLowerCase()) ||
             job.product.toLowerCase().includes(search.toLowerCase()) ||
-            job.sampleJobId.toLowerCase().includes(search.toLowerCase()) ||
             job.quotationId.toLowerCase().includes(search.toLowerCase());
         const matchesStatus = statusFilter === "All" || job.status === statusFilter;
         return matchesSearch && matchesStatus;
@@ -183,8 +203,18 @@ export function ProductionJobs() {
                         <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Refresh
                     </button>
                     <div className="flex border border-slate-200 rounded-lg overflow-hidden">
-                        <button onClick={() => setViewMode("card")} className={`px-3 py-1.5 text-xs ${viewMode === "card" ? "bg-slate-100 text-slate-800" : "text-slate-500"}`}>Cards</button>
-                        <button onClick={() => setViewMode("table")} className={`px-3 py-1.5 text-xs ${viewMode === "table" ? "bg-slate-100 text-slate-800" : "text-slate-500"}`}>Table</button>
+                        <button
+                            onClick={() => setViewMode("card")}
+                            className={`px-3 py-1.5 text-xs ${viewMode === "card" ? "bg-slate-100 text-slate-800" : "text-slate-500"}`}
+                        >
+                            Cards
+                        </button>
+                        <button
+                            onClick={() => setViewMode("table")}
+                            className={`px-3 py-1.5 text-xs ${viewMode === "table" ? "bg-slate-100 text-slate-800" : "text-slate-500"}`}
+                        >
+                            Table
+                        </button>
                     </div>
                 </div>
             </div>
@@ -251,11 +281,6 @@ export function ProductionJobs() {
                                             <p className="text-indigo-600 text-xs font-bold">{job.id}</p>
                                             <span className="text-xs text-slate-400">|</span>
                                             <p className="text-slate-500 text-xs">{job.quotationId}</p>
-                                            <span className="text-xs text-slate-400">|</span>
-                                            <div className="flex items-center gap-1">
-                                                <span className="text-[10px] text-slate-400">Sample:</span>
-                                                <p className="text-indigo-500 text-xs font-medium">{job.sampleJobId}</p>
-                                            </div>
                                         </div>
                                         <p className="text-slate-900 text-sm font-semibold leading-snug">{job.product}</p>
                                         <p className="text-slate-500 text-xs mt-0.5">{job.customer}</p>
@@ -333,7 +358,7 @@ export function ProductionJobs() {
                         <table className="w-full text-sm">
                             <thead>
                                 <tr className="bg-slate-50 border-b border-slate-200">
-                                    {["ID", "Sample", "Product", "Customer", "Status", "Machine", "Assigned To", "Progress", "Due Date", "Value", "Actions"].map((h) => (
+                                    {["ID", "Quotation", "Product", "Customer", "Status", "Machine", "Assigned To", "Progress", "Due Date", "Value", "Actions"].map((h) => (
                                         <th key={h} className="text-left text-xs text-slate-500 px-4 py-2.5 whitespace-nowrap font-medium">{h}</th>
                                     ))}
                                 </tr>
@@ -348,9 +373,8 @@ export function ProductionJobs() {
                                         <tr key={job.id} className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors">
                                             <td className="px-4 py-3">
                                                 <p className="text-indigo-600 text-xs font-bold">{job.id}</p>
-                                                <p className="text-[10px] text-slate-400">{job.quotationId}</p>
                                             </td>
-                                            <td className="px-4 py-3 text-indigo-500 text-xs font-medium">{job.sampleJobId}</td>
+                                            <td className="px-4 py-3 text-indigo-500 text-xs font-medium">{job.quotationId}</td>
                                             <td className="px-4 py-3 text-slate-800 text-xs max-w-[150px] truncate font-medium">{job.product}</td>
                                             <td className="px-4 py-3 text-slate-500 text-xs whitespace-nowrap">{job.customer}</td>
                                             <td className="px-4 py-3">

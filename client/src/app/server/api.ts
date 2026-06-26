@@ -20,21 +20,21 @@ export type ProductionStatus = "Pending" | "In Progress" | "QC Pending" | "Compl
 export type Priority = "High" | "Medium" | "Low";
 
 export interface QuotationProductSpec {
-  material: string;
-  gsm: string;
-  dimensions: string;
-  printingTech: string;
-  colors: string;
-  lamination: string;
-  packaging: string;
+    material: string;
+    gsm: string;
+    dimensions: string;
+    printingTech: string;
+    colors: string;
+    lamination: string;
+    packaging: string;
 }
 
 export interface QuotationProduct {
-  desc: string;
-  qty: number;
-  rate: number;
-  total: number;
-  specs: QuotationProductSpec;
+    desc: string;
+    qty: number;
+    rate: number;
+    total: number;
+    specs: QuotationProductSpec;
 }
 
 export interface QuotationData {
@@ -50,26 +50,26 @@ export interface QuotationData {
     sentBy: string | null;
     sentTimestamp: string | null;
     commercials: {
-      subtotal: number;
-      gst: number;
-      total: number;
-      advanceRequiredPct: number;
-      advanceReceivedAmt: number;
-      paymentTerms: string;
+        subtotal: number;
+        gst: number;
+        total: number;
+        advanceRequiredPct: number;
+        advanceReceivedAmt: number;
+        paymentTerms: string;
     };
     costing: {
-      estimatedTotalCost: number;
-      expectedMargin: number;
-      profitMarginPct: number;
-      breakdown: { material: number; machine: number; labor: number; finishing: number; packaging: number };
+        estimatedTotalCost: number;
+        expectedMargin: number;
+        profitMarginPct: number;
+        breakdown: { material: number; machine: number; labor: number; finishing: number; packaging: number };
     };
     products: QuotationProduct[];
     workflow: {
-      sampleOrder: string;
-      productionOrder: string;
-      dispatch: string;
-      invoice: string;
-      closure: string;
+        sampleOrder: string;
+        productionOrder: string;
+        dispatch: string;
+        invoice: string;
+        closure: string;
     };
     activities: Array<{ type: string; timestamp: string; user: string; note: string }>;
 }
@@ -92,7 +92,6 @@ export interface SampleJob {
 
 export interface ProductionJob {
     id: string;
-    sampleJobId: string;
     quotationId: string;
     customer: string;
     product: string;
@@ -118,11 +117,10 @@ export interface CreateSampleJobRequest {
 }
 
 export interface CreateProductionJobRequest {
-    sampleJobId: string;
-    quantity: number;
+    quotationId: string;
     deliveryDate: string;
-    machineId: string;
-    operatorId: string;
+    machineId: number;
+    operatorId: number;
     priority: Priority;
 }
 
@@ -147,16 +145,22 @@ const mapToSampleJob = (item: any): SampleJob => {
     };
 };
 
-// Helper function to map database row to ProductionJob interface
+// Updated: No sampleJobId, get data from quotations directly
 const mapToProductionJob = (item: any): ProductionJob => {
-    const sampleOrder = item.sample_orders || {};
+    const quotation = item.quotations || {};
+    const customer = quotation.customers || {};
+    const products = quotation.quotation_products || [];
+
+    let productName = 'Unknown Product';
+    if (products && products.length > 0) {
+        productName = products[0].product_name || 'Unknown Product';
+    }
 
     return {
         id: item.production_order_id,
-        sampleJobId: item.sample_order_id,
-        quotationId: sampleOrder.quotation_id || item.quotation_id || '',
-        customer: sampleOrder.customers?.company_name || 'Unknown',
-        product: sampleOrder.quotation_products?.product_name || 'Unknown',
+        quotationId: item.quotation_id || '',
+        customer: customer.company_name || 'Unknown',
+        product: productName,
         quantity: item.final_quantity || item.original_quantity || 0,
         assignedTo: item.employees?.full_name || 'Unassigned',
         machine: item.machines?.machine_name || 'Unassigned',
@@ -177,33 +181,33 @@ const mapToQuotationData = (item: any): QuotationData => {
     const sampleId = item.sample_orders && item.sample_orders.length > 0 ? item.sample_orders[0].sample_order_id : "N/A";
     const prodStatus = item.production_orders && item.production_orders.length > 0 ? item.production_orders[0].status : "N/A";
     const prodId = item.production_orders && item.production_orders.length > 0 ? item.production_orders[0].production_order_id : "N/A";
-    
+
     // Map products
     const products = (item.quotation_products || []).map((p: any) => ({
-      desc: p.product_name || 'Product',
-      qty: p.production_quantity || 0,
-      rate: 0, // Rate might come from cost_estimations or is derived
-      total: 0, // Total might come from cost_estimations
-      specs: {
-        material: p.material_type || "N/A",
-        gsm: p.paper_gsm ? `${p.paper_gsm}gsm` : "N/A",
-        dimensions: `${p.width_cm || 0}x${p.height_cm || 0}cm`,
-        printingTech: p.printing_technology || "N/A",
-        colors: p.color_type || "N/A",
-        lamination: p.lamination || "N/A",
-        packaging: p.packaging_type || "N/A"
-      }
+        desc: p.product_name || 'Product',
+        qty: p.production_quantity || 0,
+        rate: 0,
+        total: 0,
+        specs: {
+            material: p.material_type || "N/A",
+            gsm: p.paper_gsm ? `${p.paper_gsm}gsm` : "N/A",
+            dimensions: `${p.width_cm || 0}x${p.height_cm || 0}cm`,
+            printingTech: p.printing_technology || "N/A",
+            colors: p.color_type || "N/A",
+            lamination: p.lamination || "N/A",
+            packaging: p.packaging_type || "N/A"
+        }
     }));
 
     // Map costing (if available)
     let estTotal = 0;
     if (item.cost_estimations && item.cost_estimations.length > 0) {
-      estTotal = item.cost_estimations.reduce((acc: number, c: any) => acc + (c.total_cost || 0), 0);
+        estTotal = item.cost_estimations.reduce((acc: number, c: any) => acc + (c.total_cost || 0), 0);
     }
 
     return {
         id: item.quotation_id,
-        version: "v1", // No versioning in DB yet
+        version: "v1",
         customer: customerName,
         date: new Date(item.quotation_date || item.created_at).toLocaleDateString(),
         validUntil: item.delivery_date ? new Date(item.delivery_date).toLocaleDateString() : 'N/A',
@@ -215,17 +219,17 @@ const mapToQuotationData = (item: any): QuotationData => {
         sentTimestamp: null,
         commercials: {
             subtotal: Number(item.total_payment) || 0,
-            gst: (Number(item.total_payment) || 0) * 0.18, // Dummy GST calculation
+            gst: (Number(item.total_payment) || 0) * 0.18,
             total: (Number(item.total_payment) || 0) * 1.18,
             advanceRequiredPct: Number(item.advance_percentage) || 30,
-            advanceReceivedAmt: 0, // Need to join payments table if tracking this
+            advanceReceivedAmt: 0,
             paymentTerms: `${item.advance_percentage || 30}% Advance`
         },
         costing: {
             estimatedTotalCost: estTotal,
             expectedMargin: (Number(item.total_payment) || 0) - estTotal,
             profitMarginPct: estTotal > 0 && item.total_payment ? Math.round((((Number(item.total_payment) || 0) - estTotal) / (Number(item.total_payment) || 0)) * 100) : 0,
-            breakdown: { material: estTotal * 0.4, machine: estTotal * 0.3, labor: estTotal * 0.2, finishing: estTotal * 0.05, packaging: estTotal * 0.05 } // Mock breakdown based on total
+            breakdown: { material: estTotal * 0.4, machine: estTotal * 0.3, labor: estTotal * 0.2, finishing: estTotal * 0.05, packaging: estTotal * 0.05 }
         },
         products: products.length > 0 ? products : [{
             desc: "Custom Print Job", qty: 1000, rate: (Number(item.total_payment) || 0) / 1000, total: Number(item.total_payment) || 0,
@@ -283,10 +287,8 @@ export const api = {
         products: any[];
     }): Promise<void> => {
         try {
-            // Generate ID
             const qId = `QT-${Math.floor(Math.random() * 10000).toString().padStart(4, '0')}`;
-            
-            // Insert Quotation
+
             const { error: qError } = await supabase.from('quotations').insert([{
                 quotation_id: qId,
                 customer_id: payload.customer_id,
@@ -297,10 +299,9 @@ export const api = {
                 created_by: payload.created_by,
                 status: 'Draft'
             }]);
-            
+
             if (qError) throw qError;
 
-            // Insert Products
             if (payload.products && payload.products.length > 0) {
                 const productsToInsert = payload.products.map(p => ({
                     quotation_id: qId,
@@ -387,7 +388,6 @@ export const api = {
         products: any[];
     }): Promise<void> => {
         try {
-            // Update Quotation
             const { error: qError } = await supabase.from('quotations').update({
                 customer_id: payload.customer_id,
                 quotation_date: payload.quotation_date,
@@ -396,14 +396,12 @@ export const api = {
                 notes: payload.notes,
                 created_by: payload.created_by,
             }).eq('quotation_id', id);
-            
+
             if (qError) throw qError;
 
-            // Delete old products
             const { error: delError } = await supabase.from('quotation_products').delete().eq('quotation_id', id);
             if (delError) throw delError;
 
-            // Insert new Products
             if (payload.products && payload.products.length > 0) {
                 const productsToInsert = payload.products.map(p => ({
                     quotation_id: id,
@@ -545,20 +543,23 @@ export const api = {
                 .select(`
                     *,
                     employees:assigned_to(full_name),
-                    machines:machine_id(machine_name),
-                    sample_orders:sample_order_id(
-                        sample_order_id,
+                    machines:machine_id(machine_name, machine_id),
+                    quotations:quotation_id(
                         quotation_id,
                         customer_id,
-                        product_id,
+                        total_payment,
                         customers:customer_id(company_name),
-                        quotation_products:product_id(product_name),
-                        quotations:quotation_id(quotation_id, total_payment)
+                        quotation_products(
+                            product_name
+                        )
                     )
                 `)
                 .order('created_at', { ascending: false });
 
-            if (error) throw error;
+            if (error) {
+                console.error('Error fetching production jobs:', error);
+                throw error;
+            }
 
             if (!data || data.length === 0) {
                 return [];
@@ -572,76 +573,77 @@ export const api = {
     },
 
     createProductionJob: async (data: CreateProductionJobRequest): Promise<ProductionJob> => {
-        // Get the sample job with its quotation data
-        const { data: sampleData, error: sampleError } = await supabase
-            .from('sample_orders')
-            .select(`
-                *,
-                quotations:quotation_id(quotation_id, total_payment)
-            `)
-            .eq('sample_order_id', data.sampleJobId)
-            .single();
-
-        if (sampleError) {
-            console.error('Error fetching sample job:', sampleError);
-            throw new Error('Sample job not found');
-        }
-
-        // Calculate value from quotation total or estimate
-        const estimatedValue = sampleData.quotations?.total_payment ||
-            (data.quantity * sampleData.sample_cost) || 0;
-
-        const { data: result, error } = await supabase
-            .from('production_orders')
-            .insert([{
-                sample_order_id: data.sampleJobId,
-                quotation_id: sampleData.quotation_id,
-                original_quantity: data.quantity,
-                final_quantity: data.quantity,
-                assigned_to: data.operatorId,
-                machine_id: data.machineId,
-                priority: data.priority,
-                status: 'Pending',
-                progress: 0,
-                delivery_date: data.deliveryDate,
-                created_at: new Date().toISOString(),
-                value: estimatedValue,
-            }])
-            .select(`
-                *,
-                employees:assigned_to(full_name),
-                machines:machine_id(machine_name),
-                sample_orders:sample_order_id(
-                    sample_order_id,
-                    quotation_id,
-                    customer_id,
-                    product_id,
-                    customers:customer_id(company_name),
-                    quotation_products:product_id(product_name),
-                    quotations:quotation_id(quotation_id, total_payment)
-                )
-            `)
-            .single();
-
-        if (error) {
-            console.error('Error creating production job:', error);
-            throw new Error(error.message);
-        }
-
-        // Use 'Production Created' status
         try {
-            await supabase
-                .from('sample_orders')
-                .update({
-                    production_job_id: result.production_order_id,
-                    status: 'Production Created',
-                })
-                .eq('sample_order_id', data.sampleJobId);
-        } catch (updateError) {
-            console.warn('Could not update sample with production_job_id:', updateError);
-        }
+            // Fetch quotation with products and customer
+            const { data: quotation, error: quoteError } = await supabase
+                .from('quotations')
+                .select(`
+                    *,
+                    quotation_products(*),
+                    customers:customer_id(company_name)
+                `)
+                .eq('quotation_id', data.quotationId)
+                .single();
 
-        return mapToProductionJob(result);
+            if (quoteError) {
+                console.error('Error fetching quotation:', quoteError);
+                throw new Error('Quotation not found');
+            }
+
+            if (!quotation || !quotation.quotation_products || quotation.quotation_products.length === 0) {
+                throw new Error('No products found in quotation');
+            }
+
+            // Get the first product from quotation
+            const product = quotation.quotation_products[0];
+
+            // Generate production order ID
+            const poId = `PO-${Date.now().toString().slice(-6)}`;
+
+            // Insert into production_orders
+            const { data: result, error: prodError } = await supabase
+                .from('production_orders')
+                .insert([{
+                    production_order_id: poId,
+                    quotation_id: quotation.quotation_id,
+                    // sample_order_id is now nullable, we can omit it
+                    original_quantity: product.production_quantity || 0,
+                    final_quantity: product.production_quantity || 0,
+                    assigned_to: data.operatorId,
+                    machine_id: data.machineId,
+                    priority: data.priority,
+                    status: 'Pending',
+                    progress: 0,
+                    delivery_date: data.deliveryDate,
+                    created_at: new Date().toISOString(),
+                    value: quotation.total_payment || 0,
+                }])
+                .select(`
+                    *,
+                    employees:assigned_to(full_name),
+                    machines:machine_id(machine_name, machine_id),
+                    quotations:quotation_id(
+                        quotation_id,
+                        customer_id,
+                        total_payment,
+                        customers:customer_id(company_name),
+                        quotation_products(
+                            product_name
+                        )
+                    )
+                `)
+                .single();
+
+            if (prodError) {
+                console.error('Error creating production job:', prodError);
+                throw new Error(prodError.message);
+            }
+
+            return mapToProductionJob(result);
+        } catch (error) {
+            console.error('Error in createProductionJob:', error);
+            throw error;
+        }
     },
 
     updateProductionProgress: async (id: string, progress: number): Promise<ProductionJob> => {
@@ -655,15 +657,15 @@ export const api = {
             .select(`
                 *,
                 employees:assigned_to(full_name),
-                machines:machine_id(machine_name),
-                sample_orders:sample_order_id(
-                    sample_order_id,
+                machines:machine_id(machine_name, machine_id),
+                quotations:quotation_id(
                     quotation_id,
                     customer_id,
-                    product_id,
+                    total_payment,
                     customers:customer_id(company_name),
-                    quotation_products:product_id(product_name),
-                    quotations:quotation_id(quotation_id, total_payment)
+                    quotation_products(
+                        product_name
+                    )
                 )
             `)
             .single();
@@ -687,15 +689,15 @@ export const api = {
             .select(`
                 *,
                 employees:assigned_to(full_name),
-                machines:machine_id(machine_name),
-                sample_orders:sample_order_id(
-                    sample_order_id,
+                machines:machine_id(machine_name, machine_id),
+                quotations:quotation_id(
                     quotation_id,
                     customer_id,
-                    product_id,
+                    total_payment,
                     customers:customer_id(company_name),
-                    quotation_products:product_id(product_name),
-                    quotations:quotation_id(quotation_id, total_payment)
+                    quotation_products(
+                        product_name
+                    )
                 )
             `)
             .single();
@@ -710,7 +712,7 @@ export const api = {
 
     // ==================== DROPDOWN DATA ====================
 
-    getEmployees: async (): Promise<{ id: string; name: string; role: string }[]> => {
+    getEmployees: async (): Promise<{ id: number; name: string; role: string }[]> => {
         try {
             const { data, error } = await supabase
                 .from('employees')
@@ -734,7 +736,7 @@ export const api = {
         }
     },
 
-    getMachines: async (): Promise<{ id: string; name: string; type: string; status: string }[]> => {
+    getMachines: async (): Promise<{ id: number; name: string; type: string; status: string }[]> => {
         try {
             const { data, error } = await supabase
                 .from('machines')

@@ -377,9 +377,9 @@ export function MachineOperator() {
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="text-slate-700 text-sm" style={{ fontWeight: 600 }}>Assigned Jobs</h2>
-          <span className="text-xs text-slate-400">{productionJobs.length} jobs</span>
+          <span className="text-xs text-slate-400">{productionJobs.filter(j => j.status !== "Dispatched" && j.status !== "Completed" && j.progress < 100).length} active jobs</span>
         </div>
-        {productionJobs.length === 0 ? (
+        {productionJobs.filter(j => j.status !== "Dispatched" && j.status !== "Completed" && j.progress < 100).length === 0 ? (
           <div className="text-center py-12 bg-card border border-border rounded-xl">
             <div className="text-slate-400 mb-2">
               <Cpu size={48} className="mx-auto" />
@@ -389,7 +389,7 @@ export function MachineOperator() {
           </div>
         ) : (
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-            {productionJobs.map((job) => (
+            {productionJobs.filter(j => j.status !== "Dispatched" && j.status !== "Completed" && j.progress < 100).map((job) => (
               <JobCard key={job.id} job={job} onStatusUpdate={loadJobs} />
             ))}
           </div>

@@ -90,6 +90,12 @@ export function ProductionJobs() {
     }, []);
 
     const filtered = productionJobs.filter((job) => {
+        // Hide fully completed or dispatched jobs from the main "All" view
+        const isCompleted = job.status === "Dispatched" || job.progress === 100;
+        if (statusFilter === "All" && isCompleted) {
+            return false;
+        }
+
         const matchesSearch = job.id.toLowerCase().includes(search.toLowerCase()) ||
             job.customer.toLowerCase().includes(search.toLowerCase()) ||
             job.product.toLowerCase().includes(search.toLowerCase()) ||

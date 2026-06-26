@@ -23,13 +23,7 @@ export type QCRating         = 'Excellent' | 'Good' | 'Fair' | 'Poor' | 'NA';
 export type CheckType        = 'Pre-Press' | 'During Production' | 'Post Production' | 'Final';
 
 // ─── Role constants ───────────────────────────────────────────
-// Stored in DB as UPPERCASE — all comparisons are case-insensitive
-// Schema roles: Admin, Sales, Supervisor, Operator (per schema comment)
-// Your DB currently has: ADMIN, SALES_EXECUTIVE
-
-// Roles that can SUBMIT QC inspection reports
 export const QC_SUBMIT_ROLES  = ['admin', 'supervisor', 'qc', 'quality', 'qc_team'];
-// Roles that can APPROVE/REJECT QC reports
 export const QC_APPROVE_ROLES = ['admin', 'supervisor'];
 
 // ─── Role check helpers (case-insensitive) ────────────────────
@@ -1022,7 +1016,6 @@ export const api = {
     // ── STEP 1: QC Inspector submits ──────────────────────────
     createQualityCheck: async (payload: CreateQualityCheckRequest): Promise<QualityCheck> => {
         try {
-            // ── Role check (case-insensitive) ─────────────────
             const employee = await api.getCurrentEmployee();
             if (employee && !hasQCSubmitRole(employee.role)) {
                 throw new Error(
@@ -1031,7 +1024,6 @@ export const api = {
                 );
             }
 
-            // Block duplicate submission
             const existingQC = await getActiveQCForOrder(payload.production_order_id);
             if (existingQC.hasActive) {
                 throw new Error(
@@ -1087,7 +1079,6 @@ export const api = {
     // ── STEP 2: Supervisor/Admin approves ────────────────────
     approveQualityCheck: async (qcId: number, notes?: string): Promise<void> => {
         try {
-            // ── Role check (case-insensitive) ─────────────────
             const employee = await api.getCurrentEmployee();
             if (employee && !hasQCApproveRole(employee.role)) {
                 throw new Error(
@@ -1134,7 +1125,6 @@ export const api = {
         reworkDescription?: string,
     ): Promise<void> => {
         try {
-            // ── Role check (case-insensitive) ─────────────────
             const employee = await api.getCurrentEmployee();
             if (employee && !hasQCApproveRole(employee.role)) {
                 throw new Error(
@@ -1235,6 +1225,7 @@ export const api = {
         }
     },
 
+    // ── Merged conflict: both branches had same intent ─────────
     getMachines: async (): Promise<{ id: number; name: string; type: string; status: string; code?: string; isOperational?: boolean }[]> => {
         try {
             const { data, error } = await supabase
@@ -1250,7 +1241,7 @@ export const api = {
                 code:          m.machine_code,
                 name:          m.machine_name,
                 type:          m.machine_type,
-                status:        m.status || 'Active',
+                status:        m.status        || 'Active',
                 isOperational: m.is_operational !== undefined ? m.is_operational : true,
             }));
         } catch (error) {

@@ -3,9 +3,9 @@ import {
   Plus, FileText, CheckCircle, Clock, XCircle, Printer, Download, Send,
   X, AlertCircle, Calendar, User, DollarSign, Activity, ChevronDown,
   Package, Layers, ArrowRight, Lock, Copy, RefreshCcw, ThumbsUp,
-  Settings, Factory, Truck
+  Settings, Factory, Truck, FlaskConical, Check
 } from "lucide-react";
-import { api, QuotationData, Priority } from "../server/api";
+import { api, QuotationData, Priority, SampleStatus } from "../server/api";
 import { useNavigate } from "react-router-dom";
 
 function StatusBadge({ status }: { status: string }) {
@@ -35,6 +35,28 @@ const isCommerciallyCleared = (q: QuotationData) => {
   return q.commercials.advanceReceivedAmt >= required;
 };
 
+// Helper to check if sample is required from quotation metadata
+const isSampleRequired = (q: QuotationData): boolean => {
+  try {
+    // Check if there's a sample order already
+    if (q.workflow.sampleOrder !== "N/A") {
+      return true;
+    }
+    // Parse notes to get metadata
+    if (q.activities && q.activities.length > 0) {
+      const note = q.activities[0]?.note || '';
+      const metaMatch = note.match(/---JSON_META_DATA---\n({.*})/s);
+      if (metaMatch && metaMatch[1]) {
+        const meta = JSON.parse(metaMatch[1]);
+        return meta.sample_required === true;
+      }
+    }
+    return false;
+  } catch {
+    return false;
+  }
+};
+
 interface QuotationDetailProps {
   quotation: QuotationData;
   onClose: () => void;
@@ -46,8 +68,10 @@ function QuotationDetail({ quotation: q, onClose, onUpdate }: QuotationDetailPro
   const locked = isLocked(q);
   const cleared = isCommerciallyCleared(q);
   const requiredAdvance = (q.commercials.total * q.commercials.advanceRequiredPct) / 100;
+  const sampleRequired = isSampleRequired(q);
 
-  // State for Create Production Job modal
+  // State for workflow
+  const [creating, setCreating] = useState(false);
   const [showCreateProductionModal, setShowCreateProductionModal] = useState(false);
   const [machines, setMachines] = useState<{ id: number, name: string, type: string, status: string }[]>([]);
   const [employees, setEmployees] = useState<{ id: number, name: string, role: string }[]>([]);
@@ -59,7 +83,6 @@ function QuotationDetail({ quotation: q, onClose, onUpdate }: QuotationDetailPro
     priority: "Medium" as Priority,
     deliveryDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
   });
-  const [creating, setCreating] = useState(false);
 
   // Fetch dropdown data when modal opens
   useEffect(() => {
@@ -68,14 +91,9 @@ function QuotationDetail({ quotation: q, onClose, onUpdate }: QuotationDetailPro
         setLoadingDropdowns(true);
         setDropdownError(null);
         try {
-          console.log("Fetching machines...");
           const machinesData = await api.getMachines();
-          console.log("Machines data:", machinesData);
           setMachines(machinesData);
-
-          console.log("Fetching employees...");
           const employeesData = await api.getEmployees();
-          console.log("Employees data:", employeesData);
           setEmployees(employeesData);
         } catch (err) {
           console.error("Error fetching dropdown data:", err);
@@ -99,6 +117,31 @@ function QuotationDetail({ quotation: q, onClose, onUpdate }: QuotationDetailPro
     }
   };
 
+  // Handle Create Sample Job
+  const handleCreateSampleJob = async () => {
+    try {
+      setCreating(true);
+      await api.createSampleJob({
+        quotationId: q.id,
+        customerId: q.id,
+        productId: q.products[0]?.id || 1,
+        sampleQuantity: 5,
+        sampleCost: q.commercials.total * 0.05,
+        assignedTo: q.owner,
+        dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      });
+      alert("Sample job created successfully!");
+      onUpdate();
+      onClose();
+    } catch (err) {
+      console.error("Failed to create sample job:", err);
+      alert("Failed to create sample job. Please try again.");
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  // Handle Create Production Job
   const handleCreateProduction = async () => {
     if (!productionForm.machineId || productionForm.machineId === 0) {
       alert("Please select a machine");
@@ -111,14 +154,6 @@ function QuotationDetail({ quotation: q, onClose, onUpdate }: QuotationDetailPro
 
     try {
       setCreating(true);
-      console.log("Creating production job with payload:", {
-        quotationId: q.id,
-        deliveryDate: productionForm.deliveryDate,
-        machineId: productionForm.machineId,
-        operatorId: productionForm.operatorId,
-        priority: productionForm.priority,
-      });
-
       await api.createProductionJob({
         quotationId: q.id,
         deliveryDate: productionForm.deliveryDate,
@@ -136,6 +171,11 @@ function QuotationDetail({ quotation: q, onClose, onUpdate }: QuotationDetailPro
       setCreating(false);
     }
   };
+
+  // Determine what buttons to show
+  const showApproveForProduction = q.status === "Approved" && q.workflow.productionOrder === "N/A";
+  const hasSampleOrder = q.workflow.sampleOrder !== "N/A";
+  const sampleOrderApproved = q.workflow.sampleOrder === "Approved" || q.workflow.sampleOrder === "Production Created";
 
   return (
     <>
@@ -285,14 +325,67 @@ function QuotationDetail({ quotation: q, onClose, onUpdate }: QuotationDetailPro
                 </div>
               </div>
 
-              {/* Quick Action - Create Production Job */}
-              {q.workflow.productionOrder === "N/A" && q.status === "Approved" && (
-                <button
-                  onClick={() => setShowCreateProductionModal(true)}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors font-semibold text-sm shadow-sm"
-                >
-                  <Factory size={18} /> Create Production Job
-                </button>
+              {/* Action Buttons - Only show after approval */}
+              {q.status === "Approved" && q.workflow.productionOrder === "N/A" && (
+                <div className="space-y-3">
+                  {/* CASE 1: Sample Required AND No Sample Created Yet */}
+                  {sampleRequired && !hasSampleOrder && (
+                    <button
+                      onClick={handleCreateSampleJob}
+                      disabled={creating}
+                      className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-amber-500 text-white rounded-xl hover:bg-amber-600 transition-colors font-semibold text-sm shadow-sm disabled:opacity-50"
+                    >
+                      <FlaskConical size={18} /> Create Sample Job
+                    </button>
+                  )}
+
+                  {/* CASE 2: Sample Required AND Sample Created BUT Not Approved */}
+                  {sampleRequired && hasSampleOrder && !sampleOrderApproved && (
+                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-center">
+                      <p className="text-amber-700 text-sm font-medium flex items-center justify-center gap-2">
+                        <Clock size={16} /> Sample job is pending approval
+                      </p>
+                      <p className="text-amber-600 text-xs mt-1">Approve sample before creating production</p>
+                    </div>
+                  )}
+
+                  {/* CASE 3: Sample Required AND Sample Approved */}
+                  {sampleRequired && hasSampleOrder && sampleOrderApproved && (
+                    <button
+                      onClick={() => setShowCreateProductionModal(true)}
+                      className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 transition-colors font-semibold text-sm shadow-sm"
+                    >
+                      <Factory size={18} /> Create Production Job
+                    </button>
+                  )}
+
+                  {/* CASE 4: Sample NOT Required - Direct Production */}
+                  {!sampleRequired && (
+                    <button
+                      onClick={() => setShowCreateProductionModal(true)}
+                      className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors font-semibold text-sm shadow-sm"
+                    >
+                      <Check size={18} /> Approve for Production
+                    </button>
+                  )}
+
+                  {/* Show sample requirement status */}
+                  <div className="text-center">
+                    <span className={`text-xs ${sampleRequired ? 'text-amber-600' : 'text-green-600'}`}>
+                      {sampleRequired ? '📋 Sample required for this quotation' : '✅ No sample required'}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* If production is already created */}
+              {q.workflow.productionOrder !== "N/A" && (
+                <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-center">
+                  <p className="text-green-700 text-sm font-medium flex items-center justify-center gap-2">
+                    <CheckCircle size={16} /> Production Job Created
+                  </p>
+                  <p className="text-green-600 text-xs mt-1">ID: {q.workflow.productionOrder}</p>
+                </div>
               )}
             </div>
           </div>
@@ -373,9 +466,6 @@ function QuotationDetail({ quotation: q, onClose, onUpdate }: QuotationDetailPro
                     )}
                   </select>
                 )}
-                {!loadingDropdowns && machines.length === 0 && !dropdownError && (
-                  <p className="text-xs text-amber-600 mt-1">No machines found in the system. Please add machines first.</p>
-                )}
               </div>
 
               {/* Operator */}
@@ -404,9 +494,6 @@ function QuotationDetail({ quotation: q, onClose, onUpdate }: QuotationDetailPro
                       ))
                     )}
                   </select>
-                )}
-                {!loadingDropdowns && employees.length === 0 && !dropdownError && (
-                  <p className="text-xs text-amber-600 mt-1">No employees found in the system. Please add employees first.</p>
                 )}
               </div>
 
@@ -492,7 +579,6 @@ export function QuotationManagement() {
 
   const filtered = quotations.filter((q) => statusFilter === "All" || q.status === statusFilter);
 
-  // Advanced ERP Stats
   const stats = {
     total: quotations.length,
     approved: quotations.filter((q) => q.status === "Approved").length,
@@ -554,7 +640,6 @@ export function QuotationManagement() {
 
       {/* Global Filters & Quotation List */}
       <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden flex flex-col">
-        {/* Filters Bar */}
         <div className="flex items-center gap-4 p-4 border-b border-slate-100 bg-slate-50/50 flex-wrap">
           <div className="relative">
             <select
@@ -573,7 +658,6 @@ export function QuotationManagement() {
           </div>
         </div>
 
-        {/* Table Header */}
         <div className="grid grid-cols-12 gap-4 px-6 py-3 bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase tracking-wider">
           <div className="col-span-3">Quotation & Customer</div>
           <div className="col-span-2">Status</div>
@@ -582,7 +666,6 @@ export function QuotationManagement() {
           <div className="col-span-3 text-right">Downstream Workflow</div>
         </div>
 
-        {/* Table Body */}
         {loading ? (
           <div className="p-8 text-center text-slate-500 text-sm">Loading quotations...</div>
         ) : filtered.length === 0 ? (
@@ -592,10 +675,9 @@ export function QuotationManagement() {
             {filtered.map((q) => {
               const locked = isLocked(q);
               const cleared = isCommerciallyCleared(q);
+              const sampleReq = isSampleRequired(q);
               return (
                 <div key={q.id} className="grid grid-cols-12 gap-4 px-6 py-4 items-center hover:bg-slate-50/80 transition-colors cursor-pointer group" onClick={() => setSelected(q)}>
-
-                  {/* ID & Customer */}
                   <div className="col-span-3 min-w-0">
                     <div className="flex items-center gap-2">
                       <p className="text-slate-900 font-bold text-sm">{q.id}</p>
@@ -604,13 +686,9 @@ export function QuotationManagement() {
                     </div>
                     <p className="text-slate-500 text-xs truncate mt-0.5">{q.customer}</p>
                   </div>
-
-                  {/* Status */}
                   <div className="col-span-2">
                     <StatusBadge status={q.status} />
                   </div>
-
-                  {/* Value & Advance */}
                   <div className="col-span-2">
                     <p className="text-slate-900 font-bold text-sm">₹{q.commercials.total.toLocaleString()}</p>
                     <div className="flex items-center gap-1 mt-0.5">
@@ -618,29 +696,26 @@ export function QuotationManagement() {
                       <p className="text-[10px] text-slate-500">{cleared ? 'Advance Cleared' : 'Advance Pending'}</p>
                     </div>
                   </div>
-
-                  {/* Validity & Owner */}
                   <div className="col-span-2">
                     <p className={`text-xs font-medium ${q.status === 'Expired' ? 'text-red-600' : 'text-slate-700'}`}>Exp: {q.validUntil}</p>
                     <p className="text-[10px] text-slate-500 mt-0.5 flex items-center gap-1"><User size={10} /> {q.owner}</p>
                   </div>
-
-                  {/* Downstream */}
-                  <div className="col-span-3 flex justify-end">
+                  <div className="col-span-3 flex justify-end items-center gap-2">
                     {q.workflow.productionOrder !== "N/A" ? (
                       <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-100">
                         <Package size={12} /> Prod: {q.workflow.productionOrder}
                       </span>
                     ) : q.workflow.sampleOrder !== "N/A" ? (
-                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-100">
-                        <Layers size={12} /> Sample: {q.workflow.sampleOrder}
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-amber-50 text-amber-700 border border-amber-100">
+                        <FlaskConical size={12} /> Sample: {q.workflow.sampleOrder}
                       </span>
                     ) : (
-                      <span className="text-xs text-slate-400 font-medium">Not Converted</span>
+                      <span className="text-xs text-slate-400 font-medium">
+                        {sampleReq ? '📋 Sample Required' : '✅ Direct Production'}
+                      </span>
                     )}
-                    <ChevronDown size={16} className="text-slate-300 ml-4 -rotate-90 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    <ChevronDown size={16} className="text-slate-300 ml-2 -rotate-90 opacity-0 group-hover:opacity-100 transition-opacity" />
                   </div>
-
                 </div>
               );
             })}

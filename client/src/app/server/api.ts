@@ -16,7 +16,7 @@ export const supabase = createClient(
 
 // ─── Types ────────────────────────────────────────────────────
 export type SampleStatus = "Pending" | "In Progress" | "Awaiting Approval" | "Approved" | "Rejected" | "Production Created";
-export type ProductionStatus = "Pending" | "In Progress" | "QC Pending" | "Completed" | "Dispatched";
+export type ProductionStatus = "Pending" | "In Progress" | "QC Pending" | "Completed" | "Dispatched" | "Rework Required" | "Failed";
 export type Priority = "High" | "Medium" | "Low";
 export type QCStatus = 'Pending' | 'Passed' | 'Failed' | 'Rework';
 export type QCRating = 'Excellent' | 'Good' | 'Fair' | 'Poor' | 'NA';
@@ -223,7 +223,7 @@ export interface CreateSampleJobRequest {
     productId: number;
     sampleQuantity: number;
     sampleCost: number;
-    assignedTo: string | null; // Allow null
+    assignedTo: string | null;
     dueDate: string;
 }
 
@@ -775,23 +775,24 @@ export const api = {
                 product_id: data.productId,
                 sample_quantity: data.sampleQuantity,
                 sample_cost: data.sampleCost,
-                assigned_to: data.assignedTo || null, // Allow null
+                assigned_to: data.assignedTo || null,
                 due_date: data.dueDate,
-                status: 'Pending', // Start as Pending (needs assignment)
+                status: 'Pending',
                 created_at: new Date().toISOString(),
             }])
             .select(`
-      *,
-      customers:customer_id(company_name),
-      employees:assigned_to(full_name),
-      quotation_products:product_id(product_name),
-      quotations:quotation_id(quotation_id, total_payment)
-    `)
+                *,
+                customers:customer_id(company_name),
+                employees:assigned_to(full_name),
+                quotation_products:product_id(product_name),
+                quotations:quotation_id(quotation_id, total_payment)
+            `)
             .single();
 
         if (error) throw new Error(error.message);
         return mapToSampleJob(result);
     },
+
     approveSample: async (id: string): Promise<SampleJob> => {
         const { data, error } = await supabase
             .from('sample_orders')
@@ -875,20 +876,16 @@ export const api = {
         }
     },
 
-    // In api.ts, find the createProductionJob function and replace it with this:
-
     createProductionJob: async (data: any): Promise<ProductionJob> => {
         try {
-            // Check if this is from sample job (has sampleJobId) or from quotation (has quotationId)
             if (data.sampleJobId) {
-                // Create from sample job
                 const { data: sampleData, error: sampleError } = await supabase
                     .from('sample_orders')
                     .select(`
-                    *,
-                    quotations:quotation_id(quotation_id, total_payment),
-                    quotation_products:product_id(product_name, production_quantity)
-                `)
+                        *,
+                        quotations:quotation_id(quotation_id, total_payment),
+                        quotation_products:product_id(product_name, production_quantity)
+                    `)
                     .eq('sample_order_id', data.sampleJobId)
                     .single();
 
@@ -909,22 +906,20 @@ export const api = {
                         quotation_id: sampleData.quotation_id,
                         original_quantity: data.quantity || sampleData.sample_quantity || 0,
                         final_quantity: data.quantity || sampleData.sample_quantity || 0,
-                        assigned_to: null,  // No operator assigned yet
-                        machine_id: null,   // No machine assigned yet
+                        assigned_to: null,
+                        machine_id: null,
                         priority: data.priority || 'Medium',
-                        status: 'Pending',  // Starts as Pending
+                        status: 'Pending',
                         progress: 0,
                         delivery_date: data.deliveryDate,
                         created_at: new Date().toISOString(),
                         value: estimatedValue,
-                        // REMOVED: created_by field
                     }])
                     .select(PRODUCTION_SELECT)
                     .single();
 
                 if (prodError) throw new Error(prodError.message);
 
-                // Update sample order with production_job_id and status
                 await supabase
                     .from('sample_orders')
                     .update({
@@ -935,14 +930,13 @@ export const api = {
 
                 return mapToProductionJob(result);
             } else {
-                // Create from quotation (direct)
                 const { data: quotation, error: quoteError } = await supabase
                     .from('quotations')
                     .select(`
-                    *,
-                    quotation_products(*),
-                    customers:customer_id(company_name)
-                `)
+                        *,
+                        quotation_products(*),
+                        customers:customer_id(company_name)
+                    `)
                     .eq('quotation_id', data.quotationId)
                     .single();
 
@@ -951,12 +945,10 @@ export const api = {
                     throw new Error('Quotation not found');
                 }
 
-                // Check if products exist, if not create a default product
                 let product = quotation.quotation_products?.[0];
                 let productQuantity = 1000;
 
                 if (!product) {
-                    // Create a default product in the database
                     const defaultProduct = {
                         quotation_id: data.quotationId,
                         product_name: 'Custom Print Job',
@@ -997,15 +989,14 @@ export const api = {
                         quotation_id: quotation.quotation_id,
                         original_quantity: productQuantity,
                         final_quantity: productQuantity,
-                        assigned_to: null,  // No operator assigned yet
-                        machine_id: null,   // No machine assigned yet
+                        assigned_to: null,
+                        machine_id: null,
                         priority: data.priority || 'Medium',
-                        status: 'Pending',  // Starts as Pending
+                        status: 'Pending',
                         progress: 0,
                         delivery_date: data.deliveryDate,
                         created_at: new Date().toISOString(),
                         value: quotation.total_payment || 0,
-                        // REMOVED: created_by field
                     }])
                     .select(PRODUCTION_SELECT)
                     .single();
@@ -1238,10 +1229,21 @@ export const api = {
 
             if (error) throw error;
 
+            // Update production order status based on QC result
             if (payload.overall_status === 'Failed') {
                 await supabase
                     .from('production_orders')
-                    .update({ status: 'In Progress' })
+                    .update({
+                        status: 'Rework Required',
+                        progress: 0
+                    })
+                    .eq('production_order_id', payload.production_order_id);
+            } else if (payload.overall_status === 'Passed') {
+                await supabase
+                    .from('production_orders')
+                    .update({
+                        status: 'QC Pending'
+                    })
                     .eq('production_order_id', payload.production_order_id);
             }
 
@@ -1326,10 +1328,21 @@ export const api = {
                 .eq('qc_id', qcId);
             if (error) throw error;
 
+            // Update production order status based on rework requirement
             if (reworkRequired) {
                 await supabase
                     .from('production_orders')
-                    .update({ status: 'In Progress' })
+                    .update({
+                        status: 'Rework Required',
+                        progress: 0
+                    })
+                    .eq('production_order_id', qc.production_order_id);
+            } else {
+                await supabase
+                    .from('production_orders')
+                    .update({
+                        status: 'Failed'
+                    })
                     .eq('production_order_id', qc.production_order_id);
             }
         } catch (error) {

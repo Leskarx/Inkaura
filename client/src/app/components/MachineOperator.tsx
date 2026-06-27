@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Play, Pause, AlertTriangle, CheckCircle, Clock, ChevronDown, X, Cpu, RefreshCw, FlaskConical, Factory, Package, Trash2, Edit3 } from "lucide-react";
+import { Play, Pause, AlertTriangle, CheckCircle, Clock, ChevronDown, X, Cpu, RefreshCw, FlaskConical, Factory, Package, Trash2, Edit3, MessageSquare, FileText, Eye } from "lucide-react";
 import { api, ProductionJob, ProductionStatus, SampleJob, SampleStatus } from "../server/api";
 import { supabase } from "../server/api";
 
@@ -27,6 +27,9 @@ interface AssignedJob {
   materialWaste?: number;
   materialUnit?: string;
   materialName?: string;
+  qcFeedback?: string;
+  qcDefects?: string;
+  qcReworkInstructions?: string;
 }
 
 interface InventoryItem {
@@ -42,6 +45,30 @@ interface InventoryItem {
   lastorder?: string;
   created_at?: string;
   updated_at?: string;
+}
+
+interface QualityCheckReport {
+  qc_id: number;
+  production_order_id: string;
+  check_type: string;
+  check_date: string;
+  checked_by_name: string;
+  color_accuracy: string;
+  print_quality: string;
+  binding_quality: string;
+  material_quality: string;
+  dimensional_accuracy: string;
+  finishing_quality: string;
+  overall_status: string;
+  defect_type?: string;
+  defect_quantity: number;
+  defect_description?: string;
+  rework_required: boolean;
+  rework_description?: string;
+  notes?: string;
+  created_at: string;
+  customer_name: string;
+  product_name: string;
 }
 
 interface JobCardProps {
@@ -71,10 +98,77 @@ function JobCard({ job, onStatusUpdate, inventoryItems, onInventoryUpdate, curre
   const [showDoneModal, setShowDoneModal] = useState(false);
   const [doneNote, setDoneNote] = useState("");
 
+  // QC Report state
+  const [showQCReportModal, setShowQCReportModal] = useState(false);
+  const [qcReport, setQcReport] = useState<QualityCheckReport | null>(null);
+  const [reworkNote, setReworkNote] = useState("");
+  const [loadingReport, setLoadingReport] = useState(false);
+
   const progress = job.quantity > 0 ? Math.round((job.progress || 0)) : 0;
   const isSample = job.type === 'sample';
+  const isProduction = job.type === 'production';
+  const isReworkRequired = job.status === "Rework Required" || job.status === "Failed";
 
   const availableInventory = inventoryItems.filter(item => item.current > 0);
+
+  // Fetch QC report when job status is "Rework Required" or "Failed"
+  useEffect(() => {
+    const fetchQCReport = async () => {
+      if (isReworkRequired && isProduction) {
+        setLoadingReport(true);
+        try {
+          const { data: qcData, error: qcError } = await supabase
+            .from('quality_checks')
+            .select(`
+              *,
+              checked_by_emp:checked_by (full_name)
+            `)
+            .eq('production_order_id', job.id)
+            .order('created_at', { ascending: false })
+            .limit(1);
+
+          if (qcError) {
+            console.error('Error fetching QC report:', qcError);
+            setLoadingReport(false);
+            return;
+          }
+
+          if (qcData && qcData.length > 0) {
+            const qc = qcData[0];
+            setQcReport({
+              qc_id: qc.qc_id,
+              production_order_id: qc.production_order_id,
+              check_type: qc.check_type || 'N/A',
+              check_date: qc.check_date || qc.created_at,
+              checked_by_name: qc.checked_by_emp?.full_name || 'QC Team',
+              color_accuracy: qc.color_accuracy || 'NA',
+              print_quality: qc.print_quality || 'NA',
+              binding_quality: qc.binding_quality || 'NA',
+              material_quality: qc.material_quality || 'NA',
+              dimensional_accuracy: qc.dimensional_accuracy || 'NA',
+              finishing_quality: qc.finishing_quality || 'NA',
+              overall_status: qc.overall_status || 'Failed',
+              defect_type: qc.defect_type,
+              defect_quantity: qc.defect_quantity || 0,
+              defect_description: qc.defect_description,
+              rework_required: qc.rework_required || false,
+              rework_description: qc.rework_description,
+              notes: qc.notes,
+              created_at: qc.created_at,
+              customer_name: job.customer || 'Unknown',
+              product_name: job.product || 'Unknown'
+            });
+          }
+        } catch (err) {
+          console.error('Failed to fetch QC report:', err);
+        } finally {
+          setLoadingReport(false);
+        }
+      }
+    };
+
+    fetchQCReport();
+  }, [job.id, isReworkRequired, isProduction]);
 
   const handleStartWork = async () => {
     try {
@@ -85,9 +179,22 @@ function JobCard({ job, onStatusUpdate, inventoryItems, onInventoryUpdate, curre
           .update({ status: 'In Progress' })
           .eq('sample_order_id', job.id);
       } else {
+        const updateData: any = { status: 'In Progress' };
+        if (job.status === "Rework Required" || job.status === "Failed") {
+          await supabase
+            .from('job_activity_logs')
+            .insert([{
+              job_id: job.id,
+              job_type: job.type,
+              activity_type: 'rework_started',
+              reason: 'Rework started after QC failure',
+              notes: 'Operator started rework',
+              timestamp: new Date().toISOString()
+            }]);
+        }
         await supabase
           .from('production_orders')
-          .update({ status: 'In Progress' })
+          .update(updateData)
           .eq('production_order_id', job.id);
       }
       setRunning(true);
@@ -240,9 +347,24 @@ function JobCard({ job, onStatusUpdate, inventoryItems, onInventoryUpdate, curre
       } else {
         await supabase
           .from('production_orders')
-          .update({ status: 'Completed', progress: 100 })
+          .update({
+            status: 'QC Pending',
+            progress: 100
+          })
           .eq('production_order_id', job.id);
-        alert("✅ Production job marked as completed!");
+
+        await supabase
+          .from('job_activity_logs')
+          .insert([{
+            job_id: job.id,
+            job_type: job.type,
+            activity_type: 'completed',
+            reason: 'Production completed - sent to QC',
+            notes: doneNote || 'Production work completed',
+            timestamp: new Date().toISOString()
+          }]);
+
+        alert("✅ Production job completed! Sent to Quality Control for inspection.");
       }
       setShowDoneModal(false);
       setDoneNote("");
@@ -256,7 +378,94 @@ function JobCard({ job, onStatusUpdate, inventoryItems, onInventoryUpdate, curre
   };
 
   const handleMarkComplete = async () => {
+    if (isReworkRequired && isProduction) {
+      if (!qcReport) {
+        try {
+          const { data } = await supabase
+            .from('quality_checks')
+            .select(`
+              *,
+              checked_by_emp:checked_by (full_name)
+            `)
+            .eq('production_order_id', job.id)
+            .order('created_at', { ascending: false })
+            .limit(1);
+
+          if (data && data.length > 0) {
+            const qc = data[0];
+            setQcReport({
+              qc_id: qc.qc_id,
+              production_order_id: qc.production_order_id,
+              check_type: qc.check_type || 'N/A',
+              check_date: qc.check_date || qc.created_at,
+              checked_by_name: qc.checked_by_emp?.full_name || 'QC Team',
+              color_accuracy: qc.color_accuracy || 'NA',
+              print_quality: qc.print_quality || 'NA',
+              binding_quality: qc.binding_quality || 'NA',
+              material_quality: qc.material_quality || 'NA',
+              dimensional_accuracy: qc.dimensional_accuracy || 'NA',
+              finishing_quality: qc.finishing_quality || 'NA',
+              overall_status: qc.overall_status || 'Failed',
+              defect_type: qc.defect_type,
+              defect_quantity: qc.defect_quantity || 0,
+              defect_description: qc.defect_description,
+              rework_required: qc.rework_required || false,
+              rework_description: qc.rework_description,
+              notes: qc.notes,
+              created_at: qc.created_at,
+              customer_name: job.customer || 'Unknown',
+              product_name: job.product || 'Unknown'
+            });
+            setShowQCReportModal(true);
+            return;
+          }
+        } catch (err) {
+          console.error('Failed to fetch QC report:', err);
+        }
+      }
+
+      if (qcReport) {
+        setShowQCReportModal(true);
+        return;
+      }
+    }
     setShowDoneModal(true);
+  };
+
+  const handleStartRework = async () => {
+    try {
+      setUpdating(true);
+
+      await supabase
+        .from('production_orders')
+        .update({
+          status: 'In Progress',
+          progress: 0
+        })
+        .eq('production_order_id', job.id);
+
+      await supabase
+        .from('job_activity_logs')
+        .insert([{
+          job_id: job.id,
+          job_type: job.type,
+          activity_type: 'rework_started',
+          reason: 'Rework started after QC feedback',
+          notes: reworkNote || 'Rework initiated',
+          timestamp: new Date().toISOString()
+        }]);
+
+      setShowQCReportModal(false);
+      setReworkNote("");
+      setRunning(true);
+      alert("✅ Rework started! Please address the QC feedback and complete the job again.");
+      onStatusUpdate();
+    } catch (err) {
+      console.error("Failed to start rework:", err);
+      alert("Failed to start rework. Please try again.");
+    } finally {
+      setUpdating(false);
+    }
   };
 
   const handleSubmitIssue = async () => {
@@ -303,6 +512,7 @@ function JobCard({ job, onStatusUpdate, inventoryItems, onInventoryUpdate, curre
     if (job.status === "Approved") return "bg-green-50 text-green-700 border-green-200";
     if (job.status === "Production Created") return "bg-purple-50 text-purple-700 border-purple-200";
     if (job.status === "In Progress") return "bg-indigo-50 text-indigo-700 border-indigo-200";
+    if (job.status === "Rework Required" || job.status === "Failed") return "bg-red-50 text-red-700 border-red-200";
     return "bg-slate-100 text-slate-600 border-slate-200";
   };
 
@@ -310,14 +520,166 @@ function JobCard({ job, onStatusUpdate, inventoryItems, onInventoryUpdate, curre
     if (running && job.status === "In Progress") return "Running";
     if (job.status === "Awaiting Approval") return "⏳ Awaiting Approval";
     if (job.status === "In Progress" && !running) return "Paused";
+    if (job.status === "Rework Required" || job.status === "Failed") return "⚠️ Rework Required";
     return job.status;
   };
 
+  const getRatingBadge = (rating: string) => {
+    const map: Record<string, string> = {
+      Excellent: "bg-green-100 text-green-700 border-green-200",
+      Good: "bg-blue-100 text-blue-700 border-blue-200",
+      Fair: "bg-amber-100 text-amber-700 border-amber-200",
+      Poor: "bg-red-100 text-red-700 border-red-200",
+      NA: "bg-slate-100 text-slate-500 border-slate-200",
+    };
+    return (
+      <span className={`inline-flex px-2 py-0.5 rounded border text-xs font-medium ${map[rating] ?? map.NA}`}>
+        {rating}
+      </span>
+    );
+  };
+
   return (
-    <div className={`bg-card border rounded-xl overflow-hidden ${running ? "border-indigo-200" : "border-slate-200"}`}>
+    <div className={`bg-card border rounded-xl overflow-hidden ${running ? "border-indigo-200" : isReworkRequired ? "border-red-200" : "border-slate-200"}`}>
       {running && <div className="h-1 bg-indigo-600" />}
+      {isReworkRequired && <div className="h-1 bg-red-500" />}
 
       <div className="p-5">
+        {/* QC Report Modal */}
+        {showQCReportModal && qcReport && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
+                  <AlertTriangle size={20} className="text-red-500" />
+                  QC Report #{qcReport.qc_id} - Failed
+                </h3>
+                <button onClick={() => setShowQCReportModal(false)} className="text-slate-400 hover:text-slate-600">
+                  <X size={20} />
+                </button>
+              </div>
+
+              <p className="text-sm text-slate-500 mb-4">
+                {qcReport.production_order_id} · {qcReport.customer_name}
+              </p>
+
+              {/* Job Info */}
+              <div className="grid grid-cols-3 gap-3 text-xs mb-4">
+                <div className="bg-slate-50 rounded-lg p-2.5">
+                  <p className="text-slate-400 mb-0.5">Product</p>
+                  <p className="text-slate-800 font-semibold truncate">{qcReport.product_name}</p>
+                </div>
+                <div className="bg-slate-50 rounded-lg p-2.5">
+                  <p className="text-slate-400 mb-0.5">Check Type</p>
+                  <p className="text-slate-800 font-semibold">{qcReport.check_type}</p>
+                </div>
+                <div className="bg-slate-50 rounded-lg p-2.5">
+                  <p className="text-slate-400 mb-0.5">Quantity</p>
+                  <p className="text-slate-800 font-semibold">{job.quantity.toLocaleString()} pcs</p>
+                </div>
+                <div className="bg-slate-50 rounded-lg p-2.5">
+                  <p className="text-slate-400 mb-0.5">Inspector</p>
+                  <p className="text-slate-800 font-semibold">{qcReport.checked_by_name}</p>
+                </div>
+                <div className="bg-slate-50 rounded-lg p-2.5">
+                  <p className="text-slate-400 mb-0.5">Check Date</p>
+                  <p className="text-slate-800 font-semibold">{new Date(qcReport.check_date).toLocaleDateString()}</p>
+                </div>
+                <div className="bg-slate-50 rounded-lg p-2.5">
+                  <p className="text-slate-400 mb-0.5">QC Result</p>
+                  <span className="inline-flex px-2 py-0.5 rounded border text-xs font-medium bg-red-50 text-red-700 border-red-200">
+                    {qcReport.overall_status}
+                  </span>
+                </div>
+              </div>
+
+              {/* Quality Ratings */}
+              <div className="mb-4">
+                <p className="text-xs font-semibold text-slate-700 mb-2">Quality Ratings</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { label: "Color Accuracy", value: qcReport.color_accuracy },
+                    { label: "Print Quality", value: qcReport.print_quality },
+                    { label: "Material Quality", value: qcReport.material_quality },
+                    { label: "Dimensional Accuracy", value: qcReport.dimensional_accuracy },
+                    { label: "Finishing Quality", value: qcReport.finishing_quality },
+                    { label: "Binding Quality", value: qcReport.binding_quality },
+                  ].map((r) => (
+                    <div key={r.label} className="flex items-center justify-between p-2.5 bg-slate-50 rounded-lg border border-slate-100">
+                      <span className="text-xs text-slate-600">{r.label}</span>
+                      {getRatingBadge(r.value)}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Defects */}
+              {(qcReport.defect_description || qcReport.defect_quantity > 0) && (
+                <div className="p-3 bg-red-50 border border-red-100 rounded-lg mb-4 space-y-1.5">
+                  <p className="text-xs font-semibold text-red-800">Defects Found</p>
+                  {qcReport.defect_type && (
+                    <p className="text-xs text-red-700">Type: <span className="font-medium">{qcReport.defect_type}</span></p>
+                  )}
+                  {qcReport.defect_quantity > 0 && (
+                    <p className="text-xs text-red-700">Quantity: <span className="font-medium">{qcReport.defect_quantity} pcs</span></p>
+                  )}
+                  {qcReport.defect_description && (
+                    <p className="text-xs text-red-700 whitespace-pre-wrap">{qcReport.defect_description}</p>
+                  )}
+                </div>
+              )}
+
+              {/* Rework Instructions */}
+              {qcReport.rework_description && (
+                <div className="p-3 bg-orange-50 border border-orange-100 rounded-lg mb-4">
+                  <p className="text-xs font-semibold text-orange-800 mb-1">Rework Instructions</p>
+                  <p className="text-xs text-orange-700 whitespace-pre-wrap">{qcReport.rework_description}</p>
+                </div>
+              )}
+
+              {/* Notes */}
+              {qcReport.notes && (
+                <div className="p-3 bg-slate-50 border border-slate-100 rounded-lg mb-4">
+                  <p className="text-xs font-semibold text-slate-700 mb-1">Inspector Notes</p>
+                  <p className="text-xs text-slate-600">{qcReport.notes}</p>
+                </div>
+              )}
+
+              <div className="mb-4">
+                <label className="text-xs text-slate-500 block mb-1">Rework Notes (Optional)</label>
+                <textarea
+                  value={reworkNote}
+                  onChange={(e) => setReworkNote(e.target.value)}
+                  placeholder="Add notes about the rework..."
+                  rows={2}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400"
+                />
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  onClick={handleStartRework}
+                  disabled={updating}
+                  className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-medium disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {updating ? (
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <Play size={16} />
+                  )}
+                  {updating ? "Processing..." : "Start Rework"}
+                </button>
+                <button
+                  onClick={() => setShowQCReportModal(false)}
+                  className="px-4 py-2 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 transition-colors text-sm font-medium"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {showDoneModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-xl p-6 max-w-md w-full">
@@ -328,8 +690,7 @@ function JobCard({ job, onStatusUpdate, inventoryItems, onInventoryUpdate, curre
               <p className="text-sm text-slate-500 mb-4">
                 {isSample
                   ? "Sample job will be sent to supervisor for approval."
-                  : "Production job will be marked as completed."
-                }
+                  : "Production job will be sent to Quality Control for inspection."}
               </p>
               <div className="bg-slate-50 rounded-lg p-3 mb-4 space-y-1">
                 <p className="text-xs text-slate-500">Job</p>
@@ -390,6 +751,11 @@ function JobCard({ job, onStatusUpdate, inventoryItems, onInventoryUpdate, curre
                 job.priority === "Medium" ? "bg-amber-50 text-amber-700 border-amber-200" :
                   "bg-slate-50 text-slate-600 border-slate-200"
                 }`} style={{ fontWeight: 500 }}>{job.priority} Priority</span>
+              {isReworkRequired && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-red-100 text-red-700 border border-red-200">
+                  <AlertTriangle size={10} /> Rework
+                </span>
+              )}
             </div>
             <h3 className="text-slate-900 text-sm" style={{ fontWeight: 700 }}>{job.product}</h3>
             <p className="text-slate-500 text-xs mt-0.5">{job.customer} · {job.machine}</p>
@@ -423,7 +789,7 @@ function JobCard({ job, onStatusUpdate, inventoryItems, onInventoryUpdate, curre
           </div>
           <div className="h-2.5 rounded-full bg-slate-100 overflow-hidden">
             <div
-              className={`h-full rounded-full transition-all ${running ? "bg-indigo-500" : "bg-slate-400"}`}
+              className={`h-full rounded-full transition-all ${running ? "bg-indigo-500" : isReworkRequired ? "bg-red-400" : "bg-slate-400"}`}
               style={{ width: `${progress}%` }}
             />
           </div>
@@ -603,7 +969,72 @@ function JobCard({ job, onStatusUpdate, inventoryItems, onInventoryUpdate, curre
           </div>
         ) : (
           <div className="flex flex-wrap gap-2">
-            {(job.status === "Pending" || job.status === "In Progress") && (
+            {/* Show "View QC Report" button for rework jobs */}
+            {isReworkRequired && (
+              <button
+                onClick={() => {
+                  if (!qcReport) {
+                    const fetchReport = async () => {
+                      try {
+                        const { data } = await supabase
+                          .from('quality_checks')
+                          .select(`
+                            *,
+                            checked_by_emp:checked_by (full_name)
+                          `)
+                          .eq('production_order_id', job.id)
+                          .order('created_at', { ascending: false })
+                          .limit(1);
+
+                        if (data && data.length > 0) {
+                          const qc = data[0];
+                          setQcReport({
+                            qc_id: qc.qc_id,
+                            production_order_id: qc.production_order_id,
+                            check_type: qc.check_type || 'N/A',
+                            check_date: qc.check_date || qc.created_at,
+                            checked_by_name: qc.checked_by_emp?.full_name || 'QC Team',
+                            color_accuracy: qc.color_accuracy || 'NA',
+                            print_quality: qc.print_quality || 'NA',
+                            binding_quality: qc.binding_quality || 'NA',
+                            material_quality: qc.material_quality || 'NA',
+                            dimensional_accuracy: qc.dimensional_accuracy || 'NA',
+                            finishing_quality: qc.finishing_quality || 'NA',
+                            overall_status: qc.overall_status || 'Failed',
+                            defect_type: qc.defect_type,
+                            defect_quantity: qc.defect_quantity || 0,
+                            defect_description: qc.defect_description,
+                            rework_required: qc.rework_required || false,
+                            rework_description: qc.rework_description,
+                            notes: qc.notes,
+                            created_at: qc.created_at,
+                            customer_name: job.customer || 'Unknown',
+                            product_name: job.product || 'Unknown'
+                          });
+                          setShowQCReportModal(true);
+                        } else {
+                          alert('No QC report available for this job. Please check with your supervisor.');
+                        }
+                      } catch (err) {
+                        console.error('Failed to fetch QC report:', err);
+                        alert('Failed to load QC report. Please try again.');
+                      }
+                    };
+                    fetchReport();
+                  } else {
+                    setShowQCReportModal(true);
+                  }
+                }}
+                disabled={updating}
+                className="flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs text-white bg-red-600 hover:bg-red-700 transition-colors disabled:opacity-50"
+                style={{ fontWeight: 600 }}
+              >
+                <Eye size={13} /> View QC Report & Rework
+              </button>
+            )}
+
+            {/* Show "Start" button for non-rework jobs */}
+            {(job.status === "Pending" || job.status === "In Progress") && !isReworkRequired && (
               <button
                 onClick={running ? () => setShowPauseModal(true) : handleStartWork}
                 disabled={updating}
@@ -631,32 +1062,32 @@ function JobCard({ job, onStatusUpdate, inventoryItems, onInventoryUpdate, curre
               </button>
             )}
 
-            {job.status !== "Completed" && job.status !== "Dispatched" && job.status !== "Approved" && job.status !== "Production Created" && job.status !== "Awaiting Approval" && (
-              <button
-                onClick={() => setShowIssue(true)}
-                disabled={updating}
-                className="px-3 py-2 rounded-lg text-xs text-red-600 border border-red-200 hover:bg-red-50 transition-colors flex items-center gap-1 disabled:opacity-50"
-                style={{ fontWeight: 500 }}
-              >
-                <AlertTriangle size={13} /> Issue
-              </button>
-            )}
+            {job.status !== "Completed" && job.status !== "Dispatched" && job.status !== "Approved" && job.status !== "Production Created" && job.status !== "Awaiting Approval" && !isReworkRequired && (
+              <>
+                <button
+                  onClick={() => setShowIssue(true)}
+                  disabled={updating}
+                  className="px-3 py-2 rounded-lg text-xs text-red-600 border border-red-200 hover:bg-red-50 transition-colors flex items-center gap-1 disabled:opacity-50"
+                  style={{ fontWeight: 500 }}
+                >
+                  <AlertTriangle size={13} /> Issue
+                </button>
 
-            {job.status !== "Completed" && job.status !== "Dispatched" && job.status !== "Approved" && job.status !== "Production Created" && job.status !== "Awaiting Approval" && (
-              <button
-                onClick={handleMarkComplete}
-                disabled={updating}
-                className="px-3 py-2 rounded-lg text-xs text-green-700 border border-green-200 bg-green-50 hover:bg-green-100 transition-colors flex items-center gap-1 disabled:opacity-50"
-                style={{ fontWeight: 500 }}
-              >
-                {updating ? (
-                  <div className="w-4 h-4 border-2 border-green-700 border-t-transparent rounded-full animate-spin" />
-                ) : isSample ? (
-                  <><CheckCircle size={13} /> Done</>
-                ) : (
-                  <><CheckCircle size={13} /> Complete</>
-                )}
-              </button>
+                <button
+                  onClick={handleMarkComplete}
+                  disabled={updating}
+                  className="px-3 py-2 rounded-lg text-xs text-green-700 border border-green-200 bg-green-50 hover:bg-green-100 transition-colors flex items-center gap-1 disabled:opacity-50"
+                  style={{ fontWeight: 500 }}
+                >
+                  {updating ? (
+                    <div className="w-4 h-4 border-2 border-green-700 border-t-transparent rounded-full animate-spin" />
+                  ) : isSample ? (
+                    <><CheckCircle size={13} /> Done</>
+                  ) : (
+                    <><CheckCircle size={13} /> Send to QC</>
+                  )}
+                </button>
+              </>
             )}
 
             {isSample && job.status === "Awaiting Approval" && (
@@ -668,6 +1099,12 @@ function JobCard({ job, onStatusUpdate, inventoryItems, onInventoryUpdate, curre
             {!isSample && job.status === "Completed" && (
               <div className="flex-1 text-center py-2 px-3 rounded-lg text-xs bg-green-50 text-green-700 border border-green-200">
                 ✅ Completed
+              </div>
+            )}
+
+            {isReworkRequired && (
+              <div className="flex-1 text-center py-2 px-3 rounded-lg text-xs bg-red-50 text-red-700 border border-red-200">
+                ⚠️ Rework Required - Click "View QC Report & Rework"
               </div>
             )}
           </div>
@@ -814,6 +1251,7 @@ export function MachineOperator() {
   const runningJobs = assignedJobs.filter(j => j.status === "In Progress").length;
   const pendingJobs = assignedJobs.filter(j => j.status === "Pending").length;
   const awaitingApproval = assignedJobs.filter(j => j.status === "Awaiting Approval").length;
+  const reworkJobs = assignedJobs.filter(j => j.status === "Rework Required" || j.status === "Failed").length;
   const totalUnits = assignedJobs.reduce((sum, j) => sum + j.quantity, 0);
   const completedUnits = assignedJobs.reduce((sum, j) => sum + (j.quantity * (j.progress / 100)), 0);
 
@@ -877,7 +1315,7 @@ export function MachineOperator() {
           { label: "My Jobs Today", value: totalJobs, sub: `${runningJobs} running, ${pendingJobs} pending`, color: "text-indigo-600 bg-indigo-50" },
           { label: "Units Completed", value: Math.round(completedUnits).toLocaleString(), sub: `of ${totalUnits.toLocaleString()} total`, color: "text-green-600 bg-green-50" },
           { label: "Avg Progress", value: `${avgProgress}%`, sub: "Across all jobs", color: "text-purple-600 bg-purple-50" },
-          { label: "Awaiting Approval", value: awaitingApproval, sub: "Sample jobs ready", color: "text-amber-600 bg-amber-50" },
+          { label: "Rework Required", value: reworkJobs, sub: "Jobs needing rework", color: "text-red-600 bg-red-50" },
         ].map((s) => (
           <div key={s.label} className="bg-card border border-border rounded-xl p-4">
             <div className={`w-8 h-8 rounded-lg flex items-center justify-center mb-3 ${s.color}`}>

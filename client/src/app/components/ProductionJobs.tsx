@@ -1,9 +1,10 @@
 import { useState, useEffect } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
     Search, Calendar, User, Clock, AlertCircle, CheckCircle, Truck,
     Package, Settings, Eye, RefreshCw, AlertTriangle,
-    Plus, Edit, Save, X as CloseIcon, ArrowRight, Factory, Users
+    Plus, Edit, Save, X as CloseIcon, ArrowRight, Factory, Users,
+    ClipboardCheck, Play
 } from "lucide-react";
 import { api, ProductionJob, ProductionStatus, Priority } from "../server/api";
 import { supabase } from "../server/api";
@@ -61,6 +62,7 @@ const progressColors: Record<ProductionStatus, string> = {
 };
 
 export function ProductionJobs() {
+    const navigate = useNavigate();
     const [productionJobs, setProductionJobs] = useState<ProductionJob[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -88,7 +90,9 @@ export function ProductionJobs() {
             setLoading(true);
             setError(null);
             const data = await api.getProductionJobs();
-            setProductionJobs(data);
+            // Filter out dispatched jobs - they should only be shown in Dispatch page
+            const activeJobs = data.filter(job => job.status !== "Dispatched");
+            setProductionJobs(activeJobs);
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to load production jobs');
         } finally {
@@ -119,7 +123,9 @@ export function ProductionJobs() {
     }, []);
 
     const filtered = productionJobs.filter((job) => {
-        // Show all jobs including completed/dispatched when filter is specifically selected
+        // Only show non-dispatched jobs
+        if (job.status === "Dispatched") return false;
+
         const matchesSearch = job.id.toLowerCase().includes(search.toLowerCase()) ||
             job.customer.toLowerCase().includes(search.toLowerCase()) ||
             job.product.toLowerCase().includes(search.toLowerCase()) ||
@@ -134,7 +140,6 @@ export function ProductionJobs() {
         "In Progress": productionJobs.filter(j => j.status === "In Progress").length,
         "QC Pending": productionJobs.filter(j => j.status === "QC Pending").length,
         "Completed": productionJobs.filter(j => j.status === "Completed").length,
-        "Dispatched": productionJobs.filter(j => j.status === "Dispatched").length,
     };
 
     // Update progress
@@ -160,6 +165,12 @@ export function ProductionJobs() {
             setUpdating(true);
             await api.updateProductionStatus(jobId, status);
             await loadProductionJobs();
+
+            // If moving to QC Pending, navigate to QC page
+            if (status === "QC Pending") {
+                alert("✅ Job sent to Quality Control! Redirecting to QC page...");
+                navigate('/quality-control');
+            }
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to update status');
         } finally {
@@ -181,7 +192,6 @@ export function ProductionJobs() {
 
         try {
             setUpdating(true);
-            // Update the production order with machine and operator
             const { error } = await supabase
                 .from('production_orders')
                 .update({
@@ -218,7 +228,7 @@ export function ProductionJobs() {
             "Pending": "In Progress",
             "In Progress": "QC Pending",
             "QC Pending": "Completed",
-            "Completed": "Dispatched",
+            "Completed": null, // No more actions - dispatch handles it
             "Dispatched": null,
         };
         return workflow[currentStatus];
@@ -229,7 +239,7 @@ export function ProductionJobs() {
             "Pending": "Start Production",
             "In Progress": "Send to QC",
             "QC Pending": "Complete QC",
-            "Completed": "Dispatch",
+            "Completed": "Ready for Dispatch",
             "Dispatched": "Dispatched ✓",
         };
         return labels[status];
@@ -238,6 +248,13 @@ export function ProductionJobs() {
     // Check if job has machine and operator assigned
     const isJobAssigned = (job: ProductionJob) => {
         return job.machine && job.machine !== 'Unassigned' && job.assignedTo && job.assignedTo !== 'Unassigned';
+    };
+
+    // Get icon for status action
+    const getStatusActionIcon = (status: ProductionStatus) => {
+        if (status === "In Progress") return <ClipboardCheck size={12} />;
+        if (status === "Pending") return <Play size={12} />;
+        return <ArrowRight size={12} />;
     };
 
     if (loading) {
@@ -272,7 +289,7 @@ export function ProductionJobs() {
                         {productionJobs.filter(j => j.status === "In Progress").length} in production ·
                         {productionJobs.filter(j => j.status === "QC Pending").length} in QC ·
                         {productionJobs.filter(j => j.status === "Pending").length} pending assignment ·
-                        {productionJobs.length} total
+                        {productionJobs.length} active
                     </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -342,8 +359,8 @@ export function ProductionJobs() {
                     <div className="text-slate-400 mb-2">
                         <Package size={48} className="mx-auto" />
                     </div>
-                    <p className="text-slate-500 text-sm">No production jobs found</p>
-                    <p className="text-slate-400 text-xs mt-1">Try adjusting your search or filters</p>
+                    <p className="text-slate-500 text-sm">No active production jobs found</p>
+                    <p className="text-slate-400 text-xs mt-1">All jobs have been dispatched or none exist</p>
                 </div>
             ) : viewMode === "card" ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -355,6 +372,8 @@ export function ProductionJobs() {
                         const canProgress = nextStatus !== null;
                         const isAssigned = isJobAssigned(job);
                         const showAssignButton = job.status === "Pending" && !isAssigned;
+                        const isQCPending = job.status === "QC Pending";
+                        const isCompleted = job.status === "Completed";
 
                         return (
                             <div key={job.id} className="bg-white border border-slate-200 rounded-xl p-5 hover:shadow-md transition-all">
@@ -419,20 +438,38 @@ export function ProductionJobs() {
                                             <Users size={12} /> Assign Machine & Operator
                                         </button>
                                     )}
-                                    {canProgress && isAssigned && (
+
+                                    {canProgress && isAssigned && !isQCPending && (
                                         <button
                                             onClick={() => handleStatusUpdate(job.id, nextStatus)}
                                             disabled={updating}
                                             className="flex-1 flex items-center justify-center gap-1 px-3 py-1.5 text-xs bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                                         >
-                                            <ArrowRight size={12} /> {getStatusActionLabel(job.status)}
+                                            {getStatusActionIcon(job.status)} {getStatusActionLabel(job.status)}
                                         </button>
                                     )}
+
+                                    {isQCPending && (
+                                        <button
+                                            onClick={() => navigate('/quality-control')}
+                                            className="flex-1 flex items-center justify-center gap-1 px-3 py-1.5 text-xs bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors font-medium"
+                                        >
+                                            <ClipboardCheck size={12} /> Go to QC
+                                        </button>
+                                    )}
+
+                                    {isCompleted && (
+                                        <div className="flex-1 text-center py-2 px-3 rounded-lg text-xs bg-green-50 text-green-700 border border-green-200">
+                                            ✅ Ready for Dispatch
+                                        </div>
+                                    )}
+
                                     {canProgress && !isAssigned && job.status === "Pending" && (
                                         <div className="flex-1 text-center text-xs text-amber-600">
                                             ⚠️ Assign machine & operator first
                                         </div>
                                     )}
+
                                     <button
                                         onClick={() => {
                                             setSelectedJob(job);
@@ -466,6 +503,8 @@ export function ProductionJobs() {
                                     const canProgress = nextStatus !== null;
                                     const isAssigned = isJobAssigned(job);
                                     const showAssignButton = job.status === "Pending" && !isAssigned;
+                                    const isQCPending = job.status === "QC Pending";
+                                    const isCompleted = job.status === "Completed";
 
                                     return (
                                         <tr key={job.id} className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors">
@@ -502,7 +541,7 @@ export function ProductionJobs() {
                                                             Assign
                                                         </button>
                                                     )}
-                                                    {canProgress && isAssigned && (
+                                                    {canProgress && isAssigned && !isQCPending && (
                                                         <button
                                                             onClick={() => handleStatusUpdate(job.id, nextStatus)}
                                                             disabled={updating}
@@ -510,6 +549,19 @@ export function ProductionJobs() {
                                                         >
                                                             {getStatusActionLabel(job.status)}
                                                         </button>
+                                                    )}
+                                                    {isQCPending && (
+                                                        <button
+                                                            onClick={() => navigate('/quality-control')}
+                                                            className="px-2 py-1 text-xs bg-amber-100 text-amber-700 rounded hover:bg-amber-200 transition-colors"
+                                                        >
+                                                            QC
+                                                        </button>
+                                                    )}
+                                                    {isCompleted && (
+                                                        <span className="px-2 py-1 text-xs bg-green-100 text-green-700 rounded">
+                                                            Ready for Dispatch
+                                                        </span>
                                                     )}
                                                     <button
                                                         onClick={() => {

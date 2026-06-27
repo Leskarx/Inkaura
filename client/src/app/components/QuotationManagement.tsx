@@ -6,7 +6,7 @@ import {
   Settings, Factory, Truck, FlaskConical, Check, RefreshCw,
   Receipt, DollarSign as DollarIcon, Banknote, CreditCard, Wallet
 } from "lucide-react";
-import { api, QuotationData, Priority, SampleStatus } from "../server/api";
+import { api, supabase, QuotationData, Priority, SampleStatus } from "../server/api";
 import { useNavigate } from "react-router-dom";
 
 function StatusBadge({ status }: { status: string }) {
@@ -101,6 +101,16 @@ function QuotationDetail({ quotation: q, onClose, onUpdate }: QuotationDetailPro
     status: "Refunded",
   });
 
+  // State for Advance Payment Modal
+  const [showAdvancePaymentModal, setShowAdvancePaymentModal] = useState(false);
+  const [advancePayment, setAdvancePayment] = useState({
+    amount: 0,
+    method: 'Bank Transfer',
+    date: new Date().toISOString().split('T')[0],
+    notes: ''
+  });
+  const [recordingAdvance, setRecordingAdvance] = useState(false);
+
   const handleUpdateStatus = async (status: string) => {
     try {
       await api.updateQuotationStatus(q.id, status);
@@ -168,7 +178,6 @@ function QuotationDetail({ quotation: q, onClose, onUpdate }: QuotationDetailPro
   };
 
   // Handle Create Sample Job
-  // Handle Create Sample Job - Updated to match production workflow
   const handleCreateSampleJob = async () => {
     try {
       setCreating(true);
@@ -181,15 +190,13 @@ function QuotationDetail({ quotation: q, onClose, onUpdate }: QuotationDetailPro
 
       const productId = q.products && q.products.length > 0 ? q.products[0].id : 1;
 
-      // Create sample job WITHOUT assigning an operator/machine
-      // The supervisor will assign these in the Sample Jobs page
       await api.createSampleJob({
         quotationId: q.id,
         customerId: q.customerId,
         productId: productId,
         sampleQuantity: 5,
         sampleCost: q.commercials.total * 0.05,
-        assignedTo: null, // No operator assigned - supervisor will assign
+        assignedTo: null,
         dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
       });
 
@@ -204,8 +211,72 @@ function QuotationDetail({ quotation: q, onClose, onUpdate }: QuotationDetailPro
     }
   };
 
-  // Handle Send to Production
-  // Handle Send to Production
+  // Handle Advance Payment
+  // Handle Advance Payment - Updated to match your table schema
+  const handleAdvancePayment = async () => {
+    if (advancePayment.amount <= 0) {
+      alert("Please enter a valid amount");
+      return;
+    }
+
+    const maxAdvance = q.commercials.total * (q.commercials.advanceRequiredPct / 100);
+    if (advancePayment.amount > maxAdvance) {
+      alert(`Advance amount cannot exceed ₹${maxAdvance.toLocaleString()}`);
+      return;
+    }
+
+    try {
+      setRecordingAdvance(true);
+
+      // Generate payment ID
+      const paymentId = `PAY-${Date.now().toString().slice(-6)}`;
+
+      // Record payment in payments table - MATCHING YOUR SCHEMA
+      const { error: paymentError } = await supabase
+        .from('payments')
+        .insert([{
+          payment_id: parseInt(paymentId.replace('PAY-', '')), // payment_id is integer
+          quotation_id: q.id, // quotation_id is NOT NULL
+          payment_type: 'advance', // payment_type is NOT NULL
+          amount: advancePayment.amount,
+          payment_date: advancePayment.date,
+          payment_method: advancePayment.method,
+          received_by: 1, // Admin user ID
+          notes: advancePayment.notes,
+          created_at: new Date().toISOString()
+        }]);
+
+      if (paymentError) throw paymentError;
+
+      // Update quotation with advance received
+      const { error: updateError } = await supabase
+        .from('quotations')
+        .update({
+          advance_received: advancePayment.amount,
+          advance_received_date: advancePayment.date,
+          advance_paid: true
+        })
+        .eq('quotation_id', q.id);
+
+      if (updateError) throw updateError;
+
+      alert(`✅ Advance payment of ₹${advancePayment.amount.toLocaleString()} recorded successfully!`);
+      setShowAdvancePaymentModal(false);
+      setAdvancePayment({
+        amount: 0,
+        method: 'Bank Transfer',
+        date: new Date().toISOString().split('T')[0],
+        notes: ''
+      });
+      onUpdate();
+    } catch (err) {
+      console.error("Failed to record advance payment:", err);
+      alert("Failed to record advance payment. Please try again.");
+    } finally {
+      setRecordingAdvance(false);
+    }
+  };
+
   // Handle Send to Production
   const handleSendToProduction = async () => {
     try {
@@ -216,16 +287,9 @@ function QuotationDetail({ quotation: q, onClose, onUpdate }: QuotationDetailPro
         priority: productionForm.priority,
       });
 
-      // Close the modal first
       setShowSendToProductionModal(false);
-
-      // Then update the data
       await onUpdate();
-
-      // Show success message
       alert("✅ Production job created successfully! Please assign machine and operator in Production Jobs.");
-
-      // Close the detail view to force refresh
       onClose();
     } catch (err) {
       console.error("Failed to send to production:", err);
@@ -445,6 +509,144 @@ function QuotationDetail({ quotation: q, onClose, onUpdate }: QuotationDetailPro
             </div>
           )}
 
+          {/* Advance Payment Modal */}
+          {showAdvancePaymentModal && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[70] p-4">
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+                <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 sticky top-0 bg-white">
+                  <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                    <DollarSign size={20} className="text-green-600" /> Record Advance Payment
+                  </h3>
+                  <button
+                    onClick={() => setShowAdvancePaymentModal(false)}
+                    className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors"
+                  >
+                    <X size={20} />
+                  </button>
+                </div>
+
+                <div className="p-6 space-y-5">
+                  {/* Quotation Info */}
+                  <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
+                    <p className="text-xs text-slate-500 mb-1">Quotation</p>
+                    <p className="font-semibold text-slate-900">{q.id}</p>
+                    <p className="text-sm text-slate-600">{q.customer}</p>
+                    <div className="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-slate-200">
+                      <div>
+                        <p className="text-[10px] text-slate-500">Total Amount</p>
+                        <p className="text-sm font-bold text-slate-900">₹{q.commercials.total.toLocaleString()}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-slate-500">Advance Required ({q.commercials.advanceRequiredPct}%)</p>
+                        <p className="text-sm font-bold text-amber-600">₹{requiredAdvance.toLocaleString()}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Amount */}
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                      Advance Amount (₹) <span className="text-red-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        value={advancePayment.amount || ''}
+                        onChange={(e) => setAdvancePayment({ ...advancePayment, amount: parseFloat(e.target.value) || 0 })}
+                        placeholder="Enter advance amount"
+                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400"
+                      />
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                        <span className="text-xs text-slate-400">Max: ₹{requiredAdvance.toLocaleString()}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Payment Method */}
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Payment Method</label>
+                    <select
+                      value={advancePayment.method}
+                      onChange={(e) => setAdvancePayment({ ...advancePayment, method: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400"
+                    >
+                      <option value="Bank Transfer">Bank Transfer</option>
+                      <option value="Credit Card">Credit Card</option>
+                      <option value="Cash">Cash</option>
+                      <option value="Cheque">Cheque</option>
+                      <option value="UPI">UPI</option>
+                      <option value="Wallet">Wallet</option>
+                    </select>
+                  </div>
+
+                  {/* Payment Date */}
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Payment Date</label>
+                    <input
+                      type="date"
+                      value={advancePayment.date}
+                      onChange={(e) => setAdvancePayment({ ...advancePayment, date: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400"
+                    />
+                  </div>
+
+                  {/* Notes */}
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Notes (Optional)</label>
+                    <textarea
+                      value={advancePayment.notes}
+                      onChange={(e) => setAdvancePayment({ ...advancePayment, notes: e.target.value })}
+                      placeholder="Add any notes..."
+                      rows={2}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 resize-none"
+                    />
+                  </div>
+
+                  {/* Summary */}
+                  <div className="bg-green-50 rounded-xl p-4 border border-green-200">
+                    <div className="flex items-start gap-3">
+                      <CheckCircle size={18} className="text-green-600 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-xs font-semibold text-green-800">Payment Summary</p>
+                        <p className="text-xs text-green-600 mt-0.5">
+                          Recording advance payment of <strong>₹{advancePayment.amount.toLocaleString()}</strong>
+                        </p>
+                        <p className="text-xs text-green-600">
+                          Quotation: {q.id} · Customer: {q.customer}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 rounded-b-2xl flex justify-end gap-3">
+                  <button
+                    onClick={() => setShowAdvancePaymentModal(false)}
+                    className="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleAdvancePayment}
+                    disabled={recordingAdvance || advancePayment.amount <= 0}
+                    className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    {recordingAdvance ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        Recording...
+                      </>
+                    ) : (
+                      <>
+                        <DollarSign size={16} /> Record Payment
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="p-6 grid grid-cols-1 lg:grid-cols-3 gap-6 overflow-y-auto bg-slate-50/50">
 
             {/* Main Column */}
@@ -553,6 +755,18 @@ function QuotationDetail({ quotation: q, onClose, onUpdate }: QuotationDetailPro
                       </p>
                     </div>
                   </div>
+
+                  {/* Record Advance Payment Button - Only show if not cleared and not rejected */}
+                  {!cleared && !isRejected && q.status === "Approved" && (
+                    <div className="mt-3">
+                      <button
+                        onClick={() => setShowAdvancePaymentModal(true)}
+                        className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium"
+                      >
+                        <DollarSign size={16} /> Record Advance Payment
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
 

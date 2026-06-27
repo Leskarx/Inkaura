@@ -6,7 +6,7 @@ import {
 import {
   DollarSign, TrendingUp, TrendingDown, AlertCircle, Download,
   Plus, CheckCircle, Clock, XCircle, RefreshCw, Save, X,
-  FileText, Eye,
+  FileText, Eye, Receipt,
 } from "lucide-react";
 import { api, supabase } from "../server/api";
 
@@ -43,6 +43,19 @@ interface ExpenseCategory {
   pct: number;
 }
 
+interface AdvancePayment {
+  id: number;
+  payment_id: string;
+  quotation_id: string;
+  amount: number;
+  payment_type: string;
+  payment_method: string;
+  payment_date: string;
+  notes: string;
+  customer_name: string;
+  created_at: string;
+}
+
 // ─── Constants ────────────────────────────────────────────────
 const expenseColors = [
   "bg-indigo-500", "bg-purple-500", "bg-amber-500",
@@ -53,10 +66,7 @@ const INVOICE_STATUS_OPTIONS = ["Paid", "Pending", "Overdue"] as const;
 
 // ─── Helpers ──────────────────────────────────────────────────
 function resolveInvoiceStatus(inv: any): "Paid" | "Pending" | "Overdue" {
-  // Paid takes priority
   if (inv.payment_status === "Paid" || inv.status === "Paid") return "Paid";
-
-  // Overdue: only if not paid AND due date has passed
   if (
     inv.status === "Overdue" ||
     (inv.due_date &&
@@ -64,7 +74,6 @@ function resolveInvoiceStatus(inv: any): "Paid" | "Pending" | "Overdue" {
       inv.payment_status !== "Paid")
   )
     return "Overdue";
-
   return "Pending";
 }
 
@@ -100,6 +109,7 @@ export function FinanceDashboard() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [expenses, setExpenses] = useState<ExpenseCategory[]>([]);
   const [customers, setCustomers] = useState<{ id: string; name: string }[]>([]);
+  const [advancePayments, setAdvancePayments] = useState<AdvancePayment[]>([]);
   const [productionJobs, setProductionJobs] = useState<
     {
       id: string;
@@ -119,6 +129,7 @@ export function FinanceDashboard() {
   const [margin, setMargin] = useState("0");
   const [pendingAmount, setPendingAmount] = useState(0);
   const [overdueAmount, setOverdueAmount] = useState(0);
+  const [totalAdvanceReceived, setTotalAdvanceReceived] = useState(0);
 
   // Create invoice modal
   const [showCreateInvoice, setShowCreateInvoice] = useState(false);
@@ -156,7 +167,7 @@ export function FinanceDashboard() {
         customerMap[c.id] = c.name;
       });
 
-      // Invoices are the single source of truth for revenue
+      // Fetch invoices
       const { data: invoicesData, error: invoicesError } = await supabase
         .from("invoices")
         .select("*")
@@ -166,7 +177,30 @@ export function FinanceDashboard() {
         console.error("Error fetching invoices:", invoicesError);
       }
 
-      // ── Monthly revenue/expense from invoices only ──────────
+      // ── Fetch Advance Payments ──────────────────────────────
+      const { data: paymentsData, error: paymentsError } = await supabase
+        .from("payments")
+        .select("*")
+        .eq("payment_type", "advance")
+        .order("created_at", { ascending: false });
+
+      if (paymentsError) {
+        console.error("Error fetching advance payments:", paymentsError);
+      }
+
+      // Map advance payments with customer names
+      const mappedPayments: AdvancePayment[] = (paymentsData || []).map((p: any) => ({
+        ...p,
+        customer_name: customerMap[p.customer_id] || 'Unknown',
+        payment_id: p.payment_id?.toString() || `PAY-${p.id}`,
+      }));
+      setAdvancePayments(mappedPayments);
+
+      // Calculate total advance received
+      const totalAdvance = mappedPayments.reduce((sum, p) => sum + p.amount, 0);
+      setTotalAdvanceReceived(totalAdvance);
+
+      // ── Monthly revenue/expense from invoices ──────────────
       const months = [
         "Jan", "Feb", "Mar", "Apr", "May", "Jun",
         "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
@@ -183,6 +217,16 @@ export function FinanceDashboard() {
         if (monthlyMap[monthName]) {
           monthlyMap[monthName].revenue += amount;
           monthlyMap[monthName].expense += amount * 0.6;
+        }
+      });
+
+      // Also add advance payments to revenue
+      (paymentsData || []).forEach((p: any) => {
+        const date = new Date(p.payment_date);
+        const monthName = months[date.getMonth()];
+        if (monthlyMap[monthName]) {
+          monthlyMap[monthName].revenue += p.amount;
+          monthlyMap[monthName].expense += p.amount * 0.6;
         }
       });
 
@@ -358,7 +402,7 @@ export function FinanceDashboard() {
     try {
       setCreating(true);
 
-      const invoiceNumber = await api.getNextInvoiceNumber();
+      const invoiceNumber = `INV-${String(1500 + invoices.length + 1).padStart(4, '0')}`;
       const customer = customers.find((c) => c.id === invoiceForm.customerId);
       const job = productionJobs.find((j) => j.id === invoiceForm.productionJobId);
 
@@ -603,12 +647,12 @@ export function FinanceDashboard() {
                       }}
                       disabled={status === viewingInvoice.status || updatingStatus}
                       className={`px-3 py-1.5 text-xs rounded-lg border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${status === viewingInvoice.status
-                          ? "bg-slate-100 text-slate-500 border-slate-200 cursor-default"
-                          : status === "Paid"
-                            ? "bg-green-50 text-green-700 border-green-200 hover:bg-green-100"
-                            : status === "Pending"
-                              ? "bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100"
-                              : "bg-red-50 text-red-700 border-red-200 hover:bg-red-100"
+                        ? "bg-slate-100 text-slate-500 border-slate-200 cursor-default"
+                        : status === "Paid"
+                          ? "bg-green-50 text-green-700 border-green-200 hover:bg-green-100"
+                          : status === "Pending"
+                            ? "bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100"
+                            : "bg-red-50 text-red-700 border-red-200 hover:bg-red-100"
                         }`}
                     >
                       Mark as {status}
@@ -709,8 +753,8 @@ export function FinanceDashboard() {
                     <div className="absolute right-3 top-1/2 -translate-y-1/2">
                       <span
                         className={`text-xs px-2 py-0.5 rounded-full ${invoiceForm.manualAmount
-                            ? "text-blue-600 bg-blue-50"
-                            : "text-green-600 bg-green-50"
+                          ? "text-blue-600 bg-blue-50"
+                          : "text-green-600 bg-green-50"
                           }`}
                       >
                         {invoiceForm.manualAmount ? "Manual" : "Auto-filled"}
@@ -1045,6 +1089,69 @@ export function FinanceDashboard() {
         </div>
       </div>
 
+      {/* ── Advance Payments Section ────────────────────────── */}
+      <div className="bg-card border border-border rounded-xl overflow-hidden">
+        <div className="flex items-center justify-between p-5 border-b border-border">
+          <h3 className="text-slate-900 text-sm font-semibold flex items-center gap-2">
+            <Receipt size={16} className="text-green-600" />
+            Advance Payments Received
+          </h3>
+          <span className="text-xs text-green-600 font-semibold">
+            Total: ₹{totalAdvanceReceived.toLocaleString()}
+          </span>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-slate-50 border-b border-border">
+                {["Payment ID", "Quotation", "Customer", "Amount", "Date", "Method", "Notes"].map((h) => (
+                  <th key={h} className="text-left text-xs text-slate-500 px-5 py-2.5 whitespace-nowrap font-medium">
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {advancePayments.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="text-center py-8 text-slate-500 text-sm">
+                    No advance payments recorded yet.
+                  </td>
+                </tr>
+              ) : (
+                advancePayments.map((payment) => (
+                  <tr key={payment.id} className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors">
+                    <td className="px-5 py-3 text-indigo-600 text-xs font-medium">{payment.payment_id}</td>
+                    <td className="px-5 py-3 text-slate-700 text-xs">{payment.quotation_id}</td>
+                    <td className="px-5 py-3 text-slate-800 text-xs font-medium">{payment.customer_name}</td>
+                    <td className="px-5 py-3 text-slate-900 text-xs font-bold">₹{payment.amount.toLocaleString()}</td>
+                    <td className="px-5 py-3 text-slate-500 text-xs">{new Date(payment.payment_date).toLocaleDateString()}</td>
+                    <td className="px-5 py-3 text-slate-500 text-xs">{payment.payment_method || 'N/A'}</td>
+                    <td className="px-5 py-3 text-slate-500 text-xs max-w-[150px] truncate">{payment.notes || '-'}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+        <div className="px-5 py-3 bg-slate-50 border-t border-border">
+          <div className="flex items-center gap-6 text-xs">
+            <span className="text-slate-500">
+              Total Advance:{" "}
+              <span className="text-green-700 font-bold">
+                ₹{totalAdvanceReceived.toLocaleString()}
+              </span>
+            </span>
+            <span className="text-slate-500">
+              Total Invoices:{" "}
+              <span className="text-slate-800 font-bold">
+                {invoices.length} invoices
+              </span>
+            </span>
+          </div>
+        </div>
+      </div>
+
       {/* ── Invoice Management Table ────────────────────────── */}
       <div className="bg-card border border-border rounded-xl overflow-hidden">
         <div className="flex items-center justify-between p-5 border-b border-border">
@@ -1099,8 +1206,8 @@ export function FinanceDashboard() {
                     <td className="px-5 py-3 text-slate-500 text-xs">{inv.issued}</td>
                     <td
                       className={`px-5 py-3 text-xs ${inv.status === "Overdue"
-                          ? "text-red-600 font-semibold"
-                          : "text-slate-500"
+                        ? "text-red-600 font-semibold"
+                        : "text-slate-500"
                         }`}
                     >
                       {inv.due}

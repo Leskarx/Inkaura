@@ -168,6 +168,11 @@ function ProductionCard({ job, onUpdate }: { job: ProductionJob; onUpdate: () =>
   const navigate = useNavigate();
   const conf = statusConfig[job.status] || statusConfig["Pending"];
 
+  // Don't show dispatched jobs
+  if (job.status === "Dispatched") {
+    return null;
+  }
+
   return (
     <div className="bg-white border border-slate-200 rounded-xl p-5 hover:shadow-md transition-all">
       <div className="flex items-start justify-between gap-2 mb-3">
@@ -431,20 +436,23 @@ export function SupervisorDashboard() {
         api.getQualityChecks(),
       ]);
 
+      // Filter out dispatched production jobs (they should be handled in Dispatch page)
+      const activeProduction = productionData.filter(job => job.status !== "Dispatched");
+
       setSamples(sampleData);
-      setProductionJobs(productionData);
+      setProductionJobs(activeProduction);
       setQcChecks(qcData);
 
-      // Calculate stats
+      // Calculate stats - exclude dispatched jobs
       const pendingSamples = sampleData.filter(j => j.status === "Awaiting Approval").length;
       const pendingQC = qcData.filter(q => q.overall_status === "Passed" && !q.approved_for_dispatch).length;
       const approvedQC = qcData.filter(q => q.approved_for_dispatch).length;
-      const totalValue = productionData.reduce((sum, j) => sum + j.value, 0);
+      const totalValue = activeProduction.reduce((sum, j) => sum + j.value, 0);
 
       setStats({
         totalSamples: sampleData.length,
         pendingSamples,
-        totalProduction: productionData.length,
+        totalProduction: activeProduction.length,
         pendingQC,
         approvedQC,
         totalValue,

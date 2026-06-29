@@ -277,12 +277,17 @@ function JobCard({ job, onStatusUpdate, inventoryItems, onInventoryUpdate, curre
       }
 
       const newQuantity = inventoryItem.current - materialQuantity;
-      await supabase
+
+      // Update inventory
+      const { error: updateError } = await supabase
         .from('inventory')
-        .update({ current: newQuantity })
+        .update({ current: newQuantity, updated_at: new Date().toISOString() })
         .eq('id', inventoryItem.id);
 
-      await supabase
+      if (updateError) throw updateError;
+
+      // Create usage log
+      const { error: logError } = await supabase
         .from('material_usage_logs')
         .insert([{
           job_id: job.id,
@@ -294,6 +299,9 @@ function JobCard({ job, onStatusUpdate, inventoryItems, onInventoryUpdate, curre
           timestamp: new Date().toISOString()
         }]);
 
+      if (logError) throw logError;
+
+      // Update job with material usage
       await supabase
         .from(job.type === 'sample' ? 'sample_orders' : 'production_orders')
         .update({
@@ -312,9 +320,11 @@ function JobCard({ job, onStatusUpdate, inventoryItems, onInventoryUpdate, curre
       setMaterialNote("");
       setShowMaterialModal(false);
 
+      // IMPORTANT: Refresh inventory and jobs to reflect changes
       onInventoryUpdate();
       onStatusUpdate();
-      alert("Material usage recorded successfully!");
+
+      alert(`✅ Material usage recorded successfully!\nUsed: ${materialQuantity} ${inventoryItem.unit}\nWaste: ${wasteQuantity || 0} ${inventoryItem.unit}`);
     } catch (err) {
       console.error("Failed to record material usage:", err);
       alert("Failed to record material usage. Please try again.");
@@ -1029,11 +1039,11 @@ function JobCard({ job, onStatusUpdate, inventoryItems, onInventoryUpdate, curre
                 className="flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs text-white bg-red-600 hover:bg-red-700 transition-colors disabled:opacity-50"
                 style={{ fontWeight: 600 }}
               >
-                <Eye size={13} /> View QC Report & Rework
+                <Eye size={13} /> View QC Report
               </button>
             )}
 
-            {/* Show "Start" button for non-rework jobs */}
+            {/* Show "Start" button for non-rework jobs that are Pending or In Progress */}
             {(job.status === "Pending" || job.status === "In Progress") && !isReworkRequired && (
               <button
                 onClick={running ? () => setShowPauseModal(true) : handleStartWork}
@@ -1051,6 +1061,7 @@ function JobCard({ job, onStatusUpdate, inventoryItems, onInventoryUpdate, curre
               </button>
             )}
 
+            {/* Material button - only when running */}
             {running && (
               <button
                 onClick={() => setShowMaterialModal(true)}
@@ -1062,17 +1073,48 @@ function JobCard({ job, onStatusUpdate, inventoryItems, onInventoryUpdate, curre
               </button>
             )}
 
-            {job.status !== "Completed" && job.status !== "Dispatched" && job.status !== "Approved" && job.status !== "Production Created" && job.status !== "Awaiting Approval" && !isReworkRequired && (
-              <>
-                <button
-                  onClick={() => setShowIssue(true)}
-                  disabled={updating}
-                  className="px-3 py-2 rounded-lg text-xs text-red-600 border border-red-200 hover:bg-red-50 transition-colors flex items-center gap-1 disabled:opacity-50"
-                  style={{ fontWeight: 500 }}
-                >
-                  <AlertTriangle size={13} /> Issue
-                </button>
+            {/* Send to QC / Done button */}
+            {(job.status === "In Progress" || job.status === "Pending" || job.status === "Rework Required") &&
+              !isSample &&
+              !(job.status === "QC Pending") &&
+              !(job.status === "Completed") &&
+              !(job.status === "Dispatched") &&
+              !(job.status === "Approved") &&
+              !(job.status === "Production Created") &&
+              !(job.status === "Awaiting Approval") && (
+                <>
+                  <button
+                    onClick={() => setShowIssue(true)}
+                    disabled={updating}
+                    className="px-3 py-2 rounded-lg text-xs text-red-600 border border-red-200 hover:bg-red-50 transition-colors flex items-center gap-1 disabled:opacity-50"
+                    style={{ fontWeight: 500 }}
+                  >
+                    <AlertTriangle size={13} /> Issue
+                  </button>
 
+                  <button
+                    onClick={handleMarkComplete}
+                    disabled={updating}
+                    className="px-3 py-2 rounded-lg text-xs text-green-700 border border-green-200 bg-green-50 hover:bg-green-100 transition-colors flex items-center gap-1 disabled:opacity-50"
+                    style={{ fontWeight: 500 }}
+                  >
+                    {updating ? (
+                      <div className="w-4 h-4 border-2 border-green-700 border-t-transparent rounded-full animate-spin" />
+                    ) : isReworkRequired ? (
+                      <><CheckCircle size={13} /> Send to QC (Rework)</>
+                    ) : (
+                      <><CheckCircle size={13} /> Send to QC</>
+                    )}
+                  </button>
+                </>
+              )}
+
+            {/* For sample jobs - show Done button */}
+            {isSample &&
+              job.status !== "Awaiting Approval" &&
+              job.status !== "Production Created" &&
+              job.status !== "Completed" &&
+              job.status !== "Approved" && (
                 <button
                   onClick={handleMarkComplete}
                   disabled={updating}
@@ -1081,30 +1123,37 @@ function JobCard({ job, onStatusUpdate, inventoryItems, onInventoryUpdate, curre
                 >
                   {updating ? (
                     <div className="w-4 h-4 border-2 border-green-700 border-t-transparent rounded-full animate-spin" />
-                  ) : isSample ? (
-                    <><CheckCircle size={13} /> Done</>
                   ) : (
-                    <><CheckCircle size={13} /> Send to QC</>
+                    <><CheckCircle size={13} /> Done</>
                   )}
                 </button>
-              </>
+              )}
+
+            {/* QC Pending status indicator */}
+            {job.status === "QC Pending" && (
+              <div className="flex-1 text-center py-2 px-3 rounded-lg text-xs bg-amber-50 text-amber-700 border border-amber-200">
+                🔍 In Quality Control - Awaiting Inspection
+              </div>
             )}
 
+            {/* Sample awaiting approval */}
             {isSample && job.status === "Awaiting Approval" && (
               <div className="flex-1 text-center py-2 px-3 rounded-lg text-xs bg-yellow-50 text-yellow-700 border border-yellow-200">
                 ⏳ Sent to Supervisor
               </div>
             )}
 
+            {/* Production completed */}
             {!isSample && job.status === "Completed" && (
               <div className="flex-1 text-center py-2 px-3 rounded-lg text-xs bg-green-50 text-green-700 border border-green-200">
                 ✅ Completed
               </div>
             )}
 
+            {/* Rework required helper message */}
             {isReworkRequired && (
-              <div className="flex-1 text-center py-2 px-3 rounded-lg text-xs bg-red-50 text-red-700 border border-red-200">
-                ⚠️ Rework Required - Click "View QC Report & Rework"
+              <div className="w-full text-center py-1.5 px-3 rounded-lg text-xs bg-red-50 text-red-600 border border-red-200">
+                ⚠️ After rework, click "Send to QC (Rework)" above
               </div>
             )}
           </div>
@@ -1245,6 +1294,45 @@ export function MachineOperator() {
 
   useEffect(() => {
     loadJobs();
+
+    // Set up real-time subscription for inventory changes
+    const inventorySubscription = supabase
+      .channel('operator_inventory_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'inventory',
+        },
+        () => {
+          // Refresh inventory when any inventory item is updated
+          loadInventory();
+        }
+      )
+      .subscribe();
+
+    // Set up real-time subscription for material usage logs
+    const usageSubscription = supabase
+      .channel('operator_usage_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'material_usage_logs',
+        },
+        () => {
+          // Refresh inventory when a new usage log is created
+          loadInventory();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      inventorySubscription.unsubscribe();
+      usageSubscription.unsubscribe();
+    };
   }, []);
 
   const totalJobs = assignedJobs.length;

@@ -23,6 +23,7 @@ const statusConfig: Record<string, { label: string; bg: string; text: string; bo
   "Passed": { label: "Passed", bg: "bg-green-50", text: "text-green-700", border: "border-green-200", icon: <CheckCircle size={12} /> },
   "Failed": { label: "Failed", bg: "bg-red-50", text: "text-red-700", border: "border-red-200", icon: <XCircle size={12} /> },
   "Rework": { label: "Rework", bg: "bg-orange-50", text: "text-orange-700", border: "border-orange-200", icon: <AlertTriangle size={12} /> },
+  "Rework Required": { label: "Rework Required", bg: "bg-orange-50", text: "text-orange-700", border: "border-orange-200", icon: <AlertTriangle size={12} /> },
 };
 
 // Sample Card Component
@@ -280,6 +281,11 @@ function QCCard({ qc, onUpdate }: { qc: QualityCheck; onUpdate: () => void }) {
 
   const conf = statusConfig[qc.overall_status] || statusConfig["Pending"];
 
+  // Don't show QC reports that have been approved for dispatch (they should be handled in Dispatch page)
+  if (qc.approved_for_dispatch) {
+    return null;
+  }
+
   return (
     <div className="bg-white border border-slate-200 rounded-xl p-5 hover:shadow-md transition-all">
       {/* Reject Modal */}
@@ -358,7 +364,7 @@ function QCCard({ qc, onUpdate }: { qc: QualityCheck; onUpdate: () => void }) {
           <p className="text-slate-500 text-xs mt-0.5">{qc.customer_name} · {qc.check_type}</p>
         </div>
         <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs border flex-shrink-0 ${conf.bg} ${conf.text} ${conf.border}`}>
-          {conf.icon} {conf.overall_status}
+          {conf.icon} {qc.overall_status}
         </span>
       </div>
 
@@ -396,9 +402,15 @@ function QCCard({ qc, onUpdate }: { qc: QualityCheck; onUpdate: () => void }) {
         </div>
       )}
 
-      {qc.approved_for_dispatch && (
-        <div className="w-full text-center py-2 px-3 rounded-lg text-xs bg-green-50 text-green-700 border border-green-200">
-          ✅ Approved for Dispatch
+      {qc.overall_status === "Failed" && (
+        <div className="w-full text-center py-2 px-3 rounded-lg text-xs bg-red-50 text-red-700 border border-red-200">
+          ❌ Failed - Sent for Rework
+        </div>
+      )}
+
+      {qc.overall_status === "Rework" && (
+        <div className="w-full text-center py-2 px-3 rounded-lg text-xs bg-orange-50 text-orange-700 border border-orange-200">
+          🔄 Rework Required
         </div>
       )}
     </div>
@@ -439,14 +451,17 @@ export function SupervisorDashboard() {
       // Filter out dispatched production jobs (they should be handled in Dispatch page)
       const activeProduction = productionData.filter(job => job.status !== "Dispatched");
 
+      // Filter out QC reports that have been approved for dispatch
+      const activeQC = qcData.filter(qc => !qc.approved_for_dispatch);
+
       setSamples(sampleData);
       setProductionJobs(activeProduction);
-      setQcChecks(qcData);
+      setQcChecks(activeQC);
 
-      // Calculate stats - exclude dispatched jobs
+      // Calculate stats - exclude dispatched jobs and approved QC
       const pendingSamples = sampleData.filter(j => j.status === "Awaiting Approval").length;
-      const pendingQC = qcData.filter(q => q.overall_status === "Passed" && !q.approved_for_dispatch).length;
-      const approvedQC = qcData.filter(q => q.approved_for_dispatch).length;
+      const pendingQC = activeQC.filter(q => q.overall_status === "Passed" && !q.approved_for_dispatch).length;
+      const approvedQC = activeQC.filter(q => q.approved_for_dispatch).length;
       const totalValue = activeProduction.reduce((sum, j) => sum + j.value, 0);
 
       setStats({

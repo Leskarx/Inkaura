@@ -131,8 +131,8 @@ export function SampleJobs() {
   }, []);
 
   const filtered = sampleJobs.filter((job) => {
-    // Hide "Production Created" from the main "All" view
-    if (statusFilter === "All" && job.status === "Production Created") {
+    // Hide "Production Created" entirely
+    if (job.status === "Production Created") {
       return false;
     }
 
@@ -144,14 +144,16 @@ export function SampleJobs() {
     return matchesSearch && matchesStatus;
   });
 
+  const activeJobs = sampleJobs.filter(j => j.status !== "Production Created");
+
   const statusCounts = {
-    All: sampleJobs.length,
-    Pending: sampleJobs.filter(j => j.status === "Pending").length,
-    "In Progress": sampleJobs.filter(j => j.status === "In Progress").length,
-    "Awaiting Approval": sampleJobs.filter(j => j.status === "Awaiting Approval").length,
-    Approved: sampleJobs.filter(j => j.status === "Approved").length,
-    Rejected: sampleJobs.filter(j => j.status === "Rejected").length,
-    "Production Created": sampleJobs.filter(j => j.status === "Production Created").length,
+    All: activeJobs.length,
+    Pending: activeJobs.filter(j => j.status === "Pending").length,
+    "QC Pending": activeJobs.filter(j => j.status === "QC Pending").length,
+    "In Progress": activeJobs.filter(j => j.status === "In Progress").length,
+    "Awaiting Approval": activeJobs.filter(j => j.status === "Awaiting Approval").length,
+    Approved: activeJobs.filter(j => j.status === "Approved").length,
+    Rejected: activeJobs.filter(j => j.status === "Rejected").length,
   };
 
   // Open Assign Modal for new assignment
@@ -413,8 +415,6 @@ export function SampleJobs() {
           const label = key === "All" ? "All Samples" : key;
           const active = statusFilter === key;
           const conf = key !== "All" ? statusConfig[key as SampleStatus] : null;
-          // Only show Production Created filter if there are jobs with that status
-          if (key === "Production Created" && count === 0) return null;
           return (
             <button
               key={key}

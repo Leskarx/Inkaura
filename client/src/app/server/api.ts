@@ -178,6 +178,7 @@ export interface QuotationData {
         invoice: string;
         closure: string;
     };
+    sampleJobId?: string;
     activities: Array<{
         type: string;
         timestamp: string;
@@ -238,21 +239,29 @@ export interface CreateProductionJobRequest {
 
 // ─── Mapper Helpers ───────────────────────────────────────────
 
-const mapToSampleJob = (item: any): SampleJob => ({
-    id: item.sample_order_id,
-    quotationId: item.quotation_id,
-    customer: item.customers?.company_name || 'Unknown',
-    product: item.quotation_products?.product_name || 'Unknown',
-    sampleQuantity: item.sample_quantity || 0,
-    sampleCost: item.sample_cost || 0,
-    assignedTo: item.employees?.full_name || 'Unassigned',
-    status: item.status || 'Pending',
-    dueDate: item.due_date || '',
-    createdDate: item.created_at || new Date().toISOString(),
-    rejectionReason: item.rejection_reason,
-    approvedDate: item.approved_date,
-    productionJobId: item.production_job_id,
-});
+const mapToSampleJob = (item: any): SampleJob => {
+    let currentStatus = item.status || 'Pending';
+    // If a production order exists for this quotation, the sample is done
+    if (item.quotations?.production_orders && item.quotations.production_orders.length > 0) {
+        currentStatus = 'Production Created';
+    }
+
+    return {
+        id: item.sample_order_id,
+        quotationId: item.quotation_id,
+        customer: item.customers?.company_name || 'Unknown',
+        product: item.quotation_products?.product_name || 'Unknown',
+        sampleQuantity: item.sample_quantity || 0,
+        sampleCost: item.sample_cost || 0,
+        assignedTo: item.employees?.full_name || 'Unassigned',
+        status: currentStatus,
+        dueDate: item.due_date || '',
+        createdDate: item.created_at || new Date().toISOString(),
+        rejectionReason: item.rejection_reason,
+        approvedDate: item.approved_date,
+        productionJobId: item.production_job_id,
+    };
+};
 
 const mapToProductionJob = (item: any): ProductionJob => {
     const quotation = item.quotations || {};
@@ -367,6 +376,7 @@ const mapToQuotationData = (item: any): QuotationData => {
             invoice: "N/A",
             closure: "N/A",
         },
+        sampleJobId: sampleId !== "N/A" ? sampleId : undefined,
         activities: [{
             type: "Created",
             timestamp: new Date(item.created_at).toLocaleString(),
@@ -783,7 +793,7 @@ export const api = {
                     customers:customer_id(company_name),
                     employees:assigned_to(full_name),
                     quotation_products:product_id(product_name),
-                    quotations:quotation_id(quotation_id, total_payment)
+                    quotations:quotation_id(quotation_id, total_payment, production_orders(production_order_id))
                 `)
                 .order('created_at', { ascending: false });
 

@@ -29,6 +29,13 @@ const statusConfig: Record<SampleStatus, { label: string; bg: string; text: stri
     border: "border-blue-200",
     icon: React.createElement(Clock, { size: 12 })
   },
+  "QC Pending": {
+    label: "QC Pending",
+    bg: "bg-orange-50",
+    text: "text-orange-700",
+    border: "border-orange-200",
+    icon: React.createElement(AlertTriangle, { size: 12 })
+  },
   "Awaiting Approval": {
     label: "Awaiting Approval",
     bg: "bg-yellow-50",
@@ -458,6 +465,7 @@ export function SampleJobs() {
             const isRejected = job.status === "Rejected";
             const isPending = job.status === "Pending";
             const isInProgress = job.status === "In Progress";
+            const isQCPending = job.status === "QC Pending";
             const isProcessing = processingId === job.id;
 
             return (
@@ -537,6 +545,12 @@ export function SampleJobs() {
                     >
                       <Edit size={14} /> Edit Assignment
                     </button>
+                  )}
+
+                  {isQCPending && (
+                    <div className="w-full text-center py-2 px-3 rounded-lg text-xs bg-orange-50 text-orange-700 border border-orange-200">
+                      Waiting for QC Inspection
+                    </div>
                   )}
 
                   {isAwaitingApproval ? (

@@ -550,7 +550,7 @@ CREATE POLICY "operator_assignments_delete" ON operator_assignments FOR DELETE T
 -- 18. QUALITY CHECKS
 CREATE TABLE IF NOT EXISTS quality_checks (
     qc_id SERIAL PRIMARY KEY,
-    production_order_id VARCHAR(20) NOT NULL REFERENCES production_orders(production_order_id),
+    production_order_id VARCHAR(20) REFERENCES production_orders(production_order_id),
     sample_order_id VARCHAR(20) REFERENCES sample_orders(sample_order_id),
     check_type VARCHAR(30) NOT NULL,
     check_date TIMESTAMPTZ DEFAULT NOW(),

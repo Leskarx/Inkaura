@@ -339,7 +339,7 @@ function JobCard({ job, onStatusUpdate, inventoryItems, onInventoryUpdate, curre
       if (isSample) {
         await supabase
           .from('sample_orders')
-          .update({ status: 'Awaiting Approval' })
+          .update({ status: 'QC Pending' })
           .eq('sample_order_id', job.id);
 
         await supabase
@@ -348,12 +348,12 @@ function JobCard({ job, onStatusUpdate, inventoryItems, onInventoryUpdate, curre
             job_id: job.id,
             job_type: job.type,
             activity_type: 'completed',
-            reason: 'Sample completed - sent for approval',
+            reason: 'Sample completed - sent for QC',
             notes: doneNote || 'Sample work completed',
             timestamp: new Date().toISOString()
           }]);
 
-        alert("✅ Sample job completed! Sent to supervisor for approval.");
+        alert("✅ Sample job completed! Sent to Quality Control.");
       } else {
         await supabase
           .from('production_orders')
@@ -699,7 +699,7 @@ function JobCard({ job, onStatusUpdate, inventoryItems, onInventoryUpdate, curre
               </h3>
               <p className="text-sm text-slate-500 mb-4">
                 {isSample
-                  ? "Sample job will be sent to supervisor for approval."
+                  ? "Sample job will be sent to Quality Control for inspection."
                   : "Production job will be sent to Quality Control for inspection."}
               </p>
               <div className="bg-slate-50 rounded-lg p-3 mb-4 space-y-1">
@@ -731,7 +731,7 @@ function JobCard({ job, onStatusUpdate, inventoryItems, onInventoryUpdate, curre
                   ) : (
                     <CheckCircle size={16} />
                   )}
-                  {updating ? "Processing..." : "Confirm Done"}
+                  {updating ? "Processing..." : isSample ? "Send to QC" : "Confirm Done"}
                 </button>
                 <button
                   onClick={() => { setShowDoneModal(false); setDoneNote(""); }}
@@ -1111,6 +1111,7 @@ function JobCard({ job, onStatusUpdate, inventoryItems, onInventoryUpdate, curre
 
             {/* For sample jobs - show Done button */}
             {isSample &&
+              job.status !== "QC Pending" &&
               job.status !== "Awaiting Approval" &&
               job.status !== "Production Created" &&
               job.status !== "Completed" &&
@@ -1124,7 +1125,7 @@ function JobCard({ job, onStatusUpdate, inventoryItems, onInventoryUpdate, curre
                   {updating ? (
                     <div className="w-4 h-4 border-2 border-green-700 border-t-transparent rounded-full animate-spin" />
                   ) : (
-                    <><CheckCircle size={13} /> Done</>
+                    <><CheckCircle size={13} /> Send to QC</>
                   )}
                 </button>
               )}

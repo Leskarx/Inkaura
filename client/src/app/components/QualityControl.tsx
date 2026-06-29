@@ -9,7 +9,7 @@ import {
 import {
   api,
   QualityCheck,
-  QCProductionOrder,
+  QCJob,
   QCStats,
   CreateQualityCheckRequest,
   CurrentEmployee,
@@ -163,7 +163,7 @@ function AccessDenied({ role, requiredRoles, action }: {
 
 // ─── New QC Modal ─────────────────────────────────────────────
 interface NewQCModalProps {
-  productionOrders:    QCProductionOrder[];
+  jobs:                QCJob[];
   preSelectedOrderId?: string;
   currentEmployee:     CurrentEmployee | null;
   onClose:             () => void;
@@ -171,7 +171,7 @@ interface NewQCModalProps {
 }
 
 function NewQCModal({
-  productionOrders,
+  jobs,
   preSelectedOrderId = "",
   currentEmployee,
   onClose,
@@ -179,8 +179,9 @@ function NewQCModal({
 }: NewQCModalProps) {
   const [submitting,  setSubmitting]  = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [form, setForm] = useState<CreateQualityCheckRequest>({
+  const [form, setForm] = useState<CreateQualityCheckRequest & { job_type?: 'Production' | 'Sample' }>({
     production_order_id:  preSelectedOrderId,
+    job_type:             jobs.find(j => j.order_id === preSelectedOrderId)?.job_type || 'Production',
     check_type:           "Post Production",
     color_accuracy:       "Good",
     print_quality:        "Good",
@@ -235,9 +236,9 @@ function NewQCModal({
     }
   };
 
-  const selectedPO            = productionOrders.find((po) => po.production_order_id === form.production_order_id);
-  const selectedPOHasActiveQC = selectedPO?.hasActiveQC ?? false;
-  const selectedPOQCStatus    = selectedPO?.activeQCStatus;
+  const selectedJob            = jobs.find((po) => po.order_id === form.production_order_id);
+  const selectedJobHasActiveQC = selectedJob?.hasActiveQC ?? false;
+  const selectedJobQCStatus    = selectedJob?.activeQCStatus;
 
   return (
     <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
@@ -290,22 +291,23 @@ function NewQCModal({
                     value={form.production_order_id}
                     onChange={(e) => {
                       setSubmitError(null);
-                      setForm((f) => ({ ...f, production_order_id: e.target.value }));
+                      const selected = jobs.find(j => j.order_id === e.target.value);
+                      setForm((f) => ({ ...f, production_order_id: e.target.value, job_type: selected?.job_type }));
                     }}
                     className="w-full appearance-none pl-3 pr-8 py-2 text-sm border border-slate-200
                       rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20
                       focus:border-indigo-400 bg-white"
                   >
                     <option value="">Select production order...</option>
-                    {productionOrders.map((po) => {
+                    {jobs.map((po) => {
                       const isLocked = po.hasActiveQC;
                       return (
                         <option
-                          key={po.production_order_id}
-                          value={po.production_order_id}
+                          key={po.order_id}
+                          value={po.order_id}
                           disabled={isLocked}
                         >
-                          {po.production_order_id} — {po.customer_name} · {po.product_name}
+                          {po.order_id} ({po.job_type}) — {po.customer_name} · {po.product_name}
                           {po.status === "QC Pending" && !isLocked ? " ⚠ QC Pending" : ""}
                           {isLocked ? ` 🔒 ${po.activeQCStatus}` : ""}
                         </option>
@@ -317,42 +319,42 @@ function NewQCModal({
               </div>
 
               {/* Active QC Warning */}
-              {selectedPOHasActiveQC && (
+              {selectedJobHasActiveQC && (
                 <div className="flex items-start gap-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
                   <Lock size={15} className="text-amber-600 flex-shrink-0 mt-0.5" />
                   <div>
                     <p className="text-xs font-semibold text-amber-800">
-                      QC Already Submitted — {selectedPOQCStatus}
+                      QC Already Submitted — {selectedJobQCStatus}
                     </p>
                     <p className="text-xs text-amber-700 mt-0.5">
-                      {selectedPOQCStatus === "Awaiting Approval"
+                      {selectedJobQCStatus === "Awaiting Approval"
                         ? "This job's QC report is awaiting supervisor approval. You cannot submit another until it is approved or rejected."
-                        : "This job has already been approved for dispatch."}
+                        : (selectedJob?.job_type === "Sample" ? "This sample QC has already been approved." : "This job has already been approved for dispatch.")}
                     </p>
                   </div>
                 </div>
               )}
 
-              {/* Selected PO Info */}
-              {selectedPO && !selectedPOHasActiveQC && (
+              {/* Selected Job Info */}
+              {selectedJob && !selectedJobHasActiveQC && (
                 <div className="bg-indigo-50 border border-indigo-100 rounded-lg p-3 grid grid-cols-3 gap-3 text-xs">
                   <div>
                     <p className="text-indigo-400 mb-0.5">Customer</p>
-                    <p className="text-indigo-800 font-semibold">{selectedPO.customer_name}</p>
+                    <p className="text-indigo-800 font-semibold">{selectedJob.customer_name}</p>
                   </div>
                   <div>
                     <p className="text-indigo-400 mb-0.5">Product</p>
-                    <p className="text-indigo-800 font-semibold truncate">{selectedPO.product_name}</p>
+                    <p className="text-indigo-800 font-semibold truncate">{selectedJob.product_name}</p>
                   </div>
                   <div>
                     <p className="text-indigo-400 mb-0.5">Quantity</p>
-                    <p className="text-indigo-800 font-semibold">{selectedPO.final_quantity.toLocaleString()} pcs</p>
+                    <p className="text-indigo-800 font-semibold">{selectedJob.final_quantity.toLocaleString()} pcs</p>
                   </div>
                 </div>
               )}
 
               {/* Form — only if order not locked */}
-              {!selectedPOHasActiveQC && (
+              {!selectedJobHasActiveQC && (
                 <>
                   {/* Check Type */}
                   <div>
@@ -409,9 +411,9 @@ function NewQCModal({
                     <div>
                       <p className="text-sm font-semibold text-slate-700">Auto-calculated Result</p>
                       {form.overall_status === "Passed" && (
-                        <p className="text-xs text-green-600 mt-0.5">
-                          ✓ Will go to Supervisor/Admin for dispatch approval
-                        </p>
+                        <div className="text-[10px] text-green-600 font-medium">
+                          ✓ Will go to Supervisor/Admin for {selectedJob?.job_type === "Sample" ? "sample approval" : "dispatch approval"}
+                        </div>
                       )}
                       {form.overall_status === "Failed" && (
                         <p className="text-xs text-red-600 mt-0.5">
@@ -496,10 +498,10 @@ function NewQCModal({
                       <ShieldCheck size={16} className="text-blue-600 flex-shrink-0 mt-0.5" />
                       <div>
                         <p className="text-xs font-semibold text-blue-800">Supervisor/Admin Approval Required</p>
-                        <p className="text-xs text-blue-600 mt-0.5">
-                          After you submit, a <strong>Supervisor</strong> or <strong>Admin</strong> will
-                          review this report and approve for dispatch.
-                        </p>
+                        <div className="text-xs text-blue-600 mt-0.5">
+                          <strong>Note:</strong> This report will be saved as <strong>Passed</strong>.
+                          A Supervisor or Admin must still review this report and {selectedJob?.job_type === "Sample" ? "approve the sample" : "approve for dispatch"}.
+                        </div>
                       </div>
                     </div>
                   )}
@@ -528,7 +530,7 @@ function NewQCModal({
         <div className="flex gap-2 px-6 py-4 border-t border-slate-100">
           <button
             onClick={handleSubmit}
-            disabled={submitting || !form.production_order_id || selectedPOHasActiveQC || !hasSubmitPerm}
+            disabled={submitting || !form.production_order_id || selectedJobHasActiveQC || !hasSubmitPerm}
             className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white
               bg-indigo-600 hover:bg-indigo-700 transition-colors
               disabled:opacity-50 disabled:cursor-not-allowed"
@@ -537,7 +539,7 @@ function NewQCModal({
               ? "Submitting..."
               : !hasSubmitPerm
               ? "No Permission"
-              : selectedPOHasActiveQC
+              : selectedJobHasActiveQC
               ? "QC Already Submitted"
               : "Submit QC Report"}
           </button>
@@ -618,7 +620,7 @@ function QCDetailModal({ qc, currentEmployee, onClose, onApprove, onReject }: QC
               } />
             </div>
             <p className="text-slate-400 text-xs mt-0.5">
-              {qc.production_order_id} · {qc.customer_name}
+              {qc.sample_order_id || qc.production_order_id} · {qc.customer_name}
             </p>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
@@ -706,9 +708,9 @@ function QCDetailModal({ qc, currentEmployee, onClose, onApprove, onReject }: QC
                 <div className="space-y-3">
                   <div className="flex items-start gap-2 p-3 bg-blue-50 border border-blue-100 rounded-lg">
                     <ShieldCheck size={14} className="text-blue-600 flex-shrink-0 mt-0.5" />
-                    <p className="text-xs text-blue-700">
-                      <span className="font-semibold">Supervisor Review</span> — QC Inspector has marked
-                      this job as Passed. Review the ratings above and approve for dispatch or send back for rework.
+                    <p className="text-slate-600 text-sm mt-0.5 leading-relaxed">
+                      Inspector <span className="font-semibold text-slate-900">{qc.checked_by_name}</span> marked
+                      this job as Passed. Review the ratings above and {qc.sample_order_id ? "approve the sample" : "approve for dispatch"} or send back for rework.
                     </p>
                   </div>
 
@@ -722,7 +724,7 @@ function QCDetailModal({ qc, currentEmployee, onClose, onApprove, onReject }: QC
                           : "bg-green-50 text-green-700 border border-green-200 hover:bg-green-100"
                       }`}
                     >
-                      <ThumbsUp size={15} /> Approve for Dispatch
+                      <ThumbsUp size={15} /> {qc.sample_order_id ? "Approve Sample" : "Approve for Dispatch"}
                     </button>
                     <button
                       onClick={() => setAction("reject")}
@@ -839,7 +841,7 @@ function QCDetailModal({ qc, currentEmployee, onClose, onApprove, onReject }: QC
 // ─── Main Component ───────────────────────────────────────────
 export function QualityControl() {
   const [checks,           setChecks]           = useState<QualityCheck[]>([]);
-  const [productionOrders, setProductionOrders] = useState<QCProductionOrder[]>([]);
+  const [jobs,             setJobs]             = useState<QCJob[]>([]);
   const [stats,            setStats]            = useState<QCStats>({
     pending: 0, passed: 0, failed: 0, rework: 0, approvalRate: 0, awaitingApproval: 0,
   });
@@ -856,14 +858,14 @@ export function QualityControl() {
     setLoading(true);
     setError(null);
     try {
-      const [checksData, ordersData, statsData, empData] = await Promise.allSettled([
+      const [checksData, jobsData, statsData, empData] = await Promise.allSettled([
         api.getQualityChecks(),
-        api.getProductionOrdersForQC(),
+        api.getJobsForQC(),
         api.getQCStats(),
         api.getCurrentEmployee(),
       ]);
       if (checksData.status === "fulfilled") setChecks(checksData.value);
-      if (ordersData.status === "fulfilled") setProductionOrders(ordersData.value);
+      if (jobsData.status   === "fulfilled") setJobs(jobsData.value);
       if (statsData.status  === "fulfilled") setStats(statsData.value);
       if (empData.status    === "fulfilled") setCurrentEmployee(empData.value);
     } catch {
@@ -901,8 +903,9 @@ export function QualityControl() {
   };
 
   const filtered = checks.filter((qc) => {
-    const matchSearch =
-      qc.production_order_id.toLowerCase().includes(search.toLowerCase()) ||
+    const matchesSearch =
+      search === "" ||
+      (qc.sample_order_id || qc.production_order_id)?.toLowerCase().includes(search.toLowerCase()) ||
       qc.customer_name.toLowerCase().includes(search.toLowerCase()) ||
       qc.product_name.toLowerCase().includes(search.toLowerCase());
 
@@ -915,14 +918,14 @@ export function QualityControl() {
       matchStatus = qc.overall_status === statusFilter;
     }
 
-    return matchSearch && matchStatus;
+    return matchesSearch && matchStatus;
   });
 
   const userRole       = currentEmployee?.role || '';
   const hasSubmitPerm  = canSubmitQC(userRole);
   const hasApprovePerm = canApproveQC(userRole);
 
-  const pendingOrders = productionOrders.filter(
+  const pendingJobs = jobs.filter(
     (po) => po.status === "QC Pending" && !po.hasActiveQC
   );
 
@@ -947,7 +950,7 @@ export function QualityControl() {
       {/* Modals */}
       {showNewModal && (
         <NewQCModal
-          productionOrders={productionOrders}
+          jobs={jobs}
           preSelectedOrderId={preSelectedPO}
           currentEmployee={currentEmployee}
           onClose={closeNewModal}
@@ -1051,7 +1054,7 @@ export function QualityControl() {
       </div>
 
       {/* Step 1 — Pending Inspections (submit roles only) */}
-      {hasSubmitPerm && pendingOrders.length > 0 && (
+      {hasSubmitPerm && pendingJobs.length > 0 && (
         <div className="bg-white border border-amber-200 rounded-xl overflow-hidden shadow-sm">
           <div className="flex items-center justify-between px-5 py-4 border-b border-amber-100 bg-amber-50/50">
             <div className="flex items-center gap-2">
@@ -1062,13 +1065,13 @@ export function QualityControl() {
               </div>
             </div>
             <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-semibold">
-              {pendingOrders.length} jobs
+              {pendingJobs.length} jobs
             </span>
           </div>
           <div className="divide-y divide-slate-50">
-            {pendingOrders.map((po) => (
+            {pendingJobs.map((po) => (
               <div
-                key={po.production_order_id}
+                key={po.order_id}
                 className="flex items-center justify-between gap-4 px-5 py-4 hover:bg-slate-50 transition-colors"
               >
                 <div className="flex items-center gap-3 min-w-0">
@@ -1077,7 +1080,8 @@ export function QualityControl() {
                   </div>
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 mb-0.5">
-                      <p className="text-indigo-600 text-xs font-bold">{po.production_order_id}</p>
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-100 text-indigo-700">{po.job_type}</span>
+                      <p className="text-indigo-600 text-xs font-bold">{po.order_id}</p>
                       <span className="text-slate-300">·</span>
                       <p className="text-slate-500 text-xs">{po.quotation_id}</p>
                     </div>
@@ -1094,7 +1098,7 @@ export function QualityControl() {
                   </div>
                 </div>
                 <button
-                  onClick={() => openNewModal(po.production_order_id)}
+                  onClick={() => openNewModal(po.order_id)}
                   className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-indigo-600
                     border border-indigo-200 rounded-lg hover:bg-indigo-50 transition-colors
                     font-medium flex-shrink-0"
@@ -1116,7 +1120,7 @@ export function QualityControl() {
               <div>
                 <h3 className="text-slate-900 text-sm font-semibold">Step 2 — Awaiting Your Approval</h3>
                 <p className="text-slate-400 text-xs">
-                  QC passed by inspector — you ({currentEmployee?.role}) must approve for dispatch
+                  QC passed by inspector — you ({currentEmployee?.role}) must approve the report
                 </p>
               </div>
             </div>
@@ -1138,7 +1142,7 @@ export function QualityControl() {
                     <div className="flex items-center gap-2 mb-0.5">
                       <p className="text-indigo-600 text-xs font-bold">QC #{qc.qc_id}</p>
                       <span className="text-slate-300">·</span>
-                      <p className="text-slate-500 text-xs">{qc.production_order_id}</p>
+                      <p className="text-slate-500 text-xs">{qc.sample_order_id || qc.production_order_id}</p>
                     </div>
                     <p className="text-slate-800 text-sm font-semibold truncate">{qc.product_name}</p>
                     <div className="flex items-center gap-3 mt-0.5">
@@ -1250,7 +1254,10 @@ export function QualityControl() {
                       <span className="text-indigo-600 text-xs font-bold">#{qc.qc_id}</span>
                     </td>
                     <td className="px-4 py-3">
-                      <span className="text-xs font-mono text-slate-700 font-medium">{qc.production_order_id}</span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs font-mono text-slate-700 font-medium">{qc.sample_order_id || qc.production_order_id}</span>
+                        {qc.sample_order_id && <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-100 text-indigo-700">Sample</span>}
+                      </div>
                     </td>
                     <td className="px-4 py-3">
                       <span className="text-xs text-slate-600 whitespace-nowrap">{qc.customer_name}</span>

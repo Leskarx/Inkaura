@@ -15,7 +15,7 @@ export const supabase = createClient(
 );
 
 // ─── Types ────────────────────────────────────────────────────
-export type SampleStatus = "Pending" | "In Progress" | "Awaiting Approval" | "Approved" | "Rejected" | "Production Created";
+export type SampleStatus = "Pending" | "In Progress" | "QC Pending" | "Awaiting Approval" | "Approved" | "Rejected" | "Production Created";
 export type ProductionStatus = "Pending" | "In Progress" | "QC Pending" | "Completed" | "Dispatched" | "Rework Required" | "Failed";
 export type Priority = "High" | "Medium" | "Low";
 export type QCStatus = 'Pending' | 'Passed' | 'Failed' | 'Rework';
@@ -76,8 +76,9 @@ export interface QualityCheck {
     quantity: number;
 }
 
-export interface QCProductionOrder {
-    production_order_id: string;
+export interface QCJob {
+    order_id: string;
+    job_type: 'Production' | 'Sample';
     status: string;
     final_quantity: number;
     quotation_id: string;
@@ -455,35 +456,65 @@ const safeProductName = (name: string | null | undefined): string => {
 
 const enrichQualityCheck = async (qc: QualityCheck): Promise<QualityCheck> => {
     try {
-        const { data: po } = await supabase
-            .from('production_orders')
-            .select('final_quantity, quotation_id')
-            .eq('production_order_id', qc.production_order_id)
-            .single();
+        if (qc.production_order_id) {
+            const { data: po } = await supabase
+                .from('production_orders')
+                .select('final_quantity, quotation_id')
+                .eq('production_order_id', qc.production_order_id)
+                .single();
 
-        if (!po) return qc;
+            if (!po) return qc;
+            qc.quantity = po.final_quantity || 0;
 
-        qc.quantity = po.final_quantity || 0;
+            const { data: quotation } = await supabase
+                .from('quotations')
+                .select('customers:customer_id(company_name)')
+                .eq('quotation_id', po.quotation_id)
+                .single();
 
-        const { data: quotation } = await supabase
-            .from('quotations')
-            .select('customers:customer_id(company_name)')
-            .eq('quotation_id', po.quotation_id)
-            .single();
+            const qt = quotation as any;
+            qc.customer_name = qt?.customers?.company_name || 'Unknown';
 
-        const qt = quotation as any;
-        qc.customer_name = qt?.customers?.company_name || 'Unknown';
+            const { data: products } = await supabase
+                .from('quotation_products')
+                .select('product_name, product_type, printing_technology')
+                .eq('quotation_id', po.quotation_id)
+                .limit(1);
 
-        const { data: products } = await supabase
-            .from('quotation_products')
-            .select('product_name, product_type, printing_technology')
-            .eq('quotation_id', po.quotation_id)
-            .limit(1);
+            const qp = products?.[0];
+            qc.product_name = safeProductName(qp?.product_name);
+            qc.product_type = qp?.product_type || 'Custom';
+            qc.printing_technology = qp?.printing_technology || 'N/A';
+        } else if (qc.sample_order_id) {
+            const { data: so } = await supabase
+                .from('sample_orders')
+                .select('sample_quantity, quotation_id')
+                .eq('sample_order_id', qc.sample_order_id)
+                .single();
 
-        const qp = products?.[0];
-        qc.product_name = safeProductName(qp?.product_name);
-        qc.product_type = qp?.product_type || 'Custom';
-        qc.printing_technology = qp?.printing_technology || 'N/A';
+            if (!so) return qc;
+            qc.quantity = so.sample_quantity || 0;
+
+            const { data: quotation } = await supabase
+                .from('quotations')
+                .select('customers:customer_id(company_name)')
+                .eq('quotation_id', so.quotation_id)
+                .single();
+
+            const qt = quotation as any;
+            qc.customer_name = qt?.customers?.company_name || 'Unknown';
+
+            const { data: products } = await supabase
+                .from('quotation_products')
+                .select('product_name, product_type, printing_technology')
+                .eq('quotation_id', so.quotation_id)
+                .limit(1);
+
+            const qp = products?.[0];
+            qc.product_name = safeProductName(qp?.product_name);
+            qc.product_type = qp?.product_type || 'Custom';
+            qc.printing_technology = qp?.printing_technology || 'N/A';
+        }
 
         return qc;
     } catch {
@@ -493,13 +524,15 @@ const enrichQualityCheck = async (qc: QualityCheck): Promise<QualityCheck> => {
 
 // ── Check active QC for a production order ────────────────────
 const getActiveQCForOrder = async (
-    productionOrderId: string
+    orderId: string,
+    jobType: 'Production' | 'Sample' = 'Production'
 ): Promise<{ hasActive: boolean; activeQCStatus?: string; activeQCId?: number }> => {
     try {
+        const column = jobType === 'Production' ? 'production_order_id' : 'sample_order_id';
         const { data } = await supabase
             .from('quality_checks')
             .select('qc_id, overall_status, approved_for_dispatch')
-            .eq('production_order_id', productionOrderId)
+            .eq(column, orderId)
             .order('created_at', { ascending: false })
             .limit(1);
 
@@ -1130,19 +1163,30 @@ export const api = {
         }
     },
 
-    getProductionOrdersForQC: async (): Promise<QCProductionOrder[]> => {
+    getJobsForQC: async (): Promise<QCJob[]> => {
         try {
-            const { data: orders, error: ordersError } = await supabase
+            // Fetch Production Orders
+            const { data: pOrders, error: pError } = await supabase
                 .from('production_orders')
                 .select('production_order_id, status, final_quantity, quotation_id')
                 .order('created_at', { ascending: false });
 
-            if (ordersError) throw ordersError;
-            if (!orders || orders.length === 0) return [];
+            if (pError) throw pError;
 
-            const enriched: QCProductionOrder[] = [];
+            // Fetch Sample Orders
+            const { data: sOrders, error: sError } = await supabase
+                .from('sample_orders')
+                .select('sample_order_id, status, sample_quantity, quotation_id')
+                .order('created_at', { ascending: false });
+            
+            if (sError) throw sError;
 
-            for (const po of orders) {
+            const enriched: QCJob[] = [];
+
+            // Process Production Orders
+            for (const po of (pOrders || [])) {
+                if (po.status !== 'QC Pending' && po.status !== 'Completed') continue;
+
                 const { data: quotation } = await supabase
                     .from('quotations')
                     .select('quotation_id, customers:customer_id(company_name)')
@@ -1155,15 +1199,52 @@ export const api = {
                     .eq('quotation_id', po.quotation_id)
                     .limit(1);
 
-                const qcStatus = await getActiveQCForOrder(po.production_order_id);
+                const qcStatus = await getActiveQCForOrder(po.production_order_id, 'Production');
                 const qp = products?.[0];
                 const qt = quotation as any;
 
                 enriched.push({
-                    production_order_id: po.production_order_id,
+                    order_id: po.production_order_id,
+                    job_type: 'Production',
                     status: po.status,
                     final_quantity: po.final_quantity || 0,
                     quotation_id: po.quotation_id,
+                    customer_name: qt?.customers?.company_name || 'Unknown',
+                    product_name: safeProductName(qp?.product_name),
+                    product_type: qp?.product_type || 'Custom',
+                    printing_technology: qp?.printing_technology || 'N/A',
+                    hasActiveQC: qcStatus.hasActive,
+                    activeQCStatus: qcStatus.activeQCStatus,
+                    activeQCId: qcStatus.activeQCId,
+                });
+            }
+
+            // Process Sample Orders
+            for (const so of (sOrders || [])) {
+                if (!["QC Pending", "Awaiting Approval", "Approved", "Production Created"].includes(so.status)) continue;
+
+                const { data: quotation } = await supabase
+                    .from('quotations')
+                    .select('quotation_id, customers:customer_id(company_name)')
+                    .eq('quotation_id', so.quotation_id)
+                    .single();
+
+                const { data: products } = await supabase
+                    .from('quotation_products')
+                    .select('product_name, product_type, printing_technology')
+                    .eq('quotation_id', so.quotation_id)
+                    .limit(1);
+
+                const qcStatus = await getActiveQCForOrder(so.sample_order_id, 'Sample');
+                const qp = products?.[0];
+                const qt = quotation as any;
+
+                enriched.push({
+                    order_id: so.sample_order_id,
+                    job_type: 'Sample',
+                    status: so.status,
+                    final_quantity: so.sample_quantity || 0,
+                    quotation_id: so.quotation_id,
                     customer_name: qt?.customers?.company_name || 'Unknown',
                     product_name: safeProductName(qp?.product_name),
                     product_type: qp?.product_type || 'Custom',
@@ -1181,7 +1262,7 @@ export const api = {
         }
     },
 
-    createQualityCheck: async (payload: CreateQualityCheckRequest): Promise<QualityCheck> => {
+    createQualityCheck: async (payload: CreateQualityCheckRequest & { job_type?: 'Production' | 'Sample' }): Promise<QualityCheck> => {
         try {
             const employee = await api.getCurrentEmployee();
             if (employee && !hasQCSubmitRole(employee.role)) {
@@ -1191,7 +1272,7 @@ export const api = {
                 );
             }
 
-            const existingQC = await getActiveQCForOrder(payload.production_order_id);
+            const existingQC = await getActiveQCForOrder(payload.production_order_id, payload.job_type);
             if (existingQC.hasActive) {
                 throw new Error(
                     existingQC.activeQCStatus === 'Awaiting Approval'
@@ -1205,8 +1286,8 @@ export const api = {
             const { data, error } = await supabase
                 .from('quality_checks')
                 .insert([{
-                    production_order_id: payload.production_order_id,
-                    sample_order_id: payload.sample_order_id || null,
+                    production_order_id: payload.job_type === 'Sample' ? null : payload.production_order_id,
+                    sample_order_id: payload.job_type === 'Sample' ? payload.production_order_id : null,
                     check_type: payload.check_type,
                     checked_by: checkedBy,
                     color_accuracy: payload.color_accuracy,
@@ -1231,20 +1312,19 @@ export const api = {
 
             // Update production order status based on QC result
             if (payload.overall_status === 'Failed') {
-                await supabase
-                    .from('production_orders')
-                    .update({
-                        status: 'Rework Required',
-                        progress: 0
-                    })
-                    .eq('production_order_id', payload.production_order_id);
+                if (payload.job_type === 'Sample') {
+                    await supabase
+                        .from('sample_orders')
+                        .update({ status: 'In Progress' })
+                        .eq('sample_order_id', payload.production_order_id);
+                } else {
+                    await supabase
+                        .from('production_orders')
+                        .update({ status: 'Rework Required', progress: 0 })
+                        .eq('production_order_id', payload.production_order_id);
+                }
             } else if (payload.overall_status === 'Passed') {
-                await supabase
-                    .from('production_orders')
-                    .update({
-                        status: 'QC Pending'
-                    })
-                    .eq('production_order_id', payload.production_order_id);
+                // If passed, it stays in QC Pending (Awaiting Supervisor Approval)
             }
 
             return await enrichQualityCheck(mapToQualityCheck(data));
@@ -1268,7 +1348,7 @@ export const api = {
 
             const { data: qc, error: fetchError } = await supabase
                 .from('quality_checks')
-                .select('production_order_id')
+                .select('production_order_id, sample_order_id')
                 .eq('qc_id', qcId)
                 .single();
             if (fetchError) throw fetchError;
@@ -1284,10 +1364,17 @@ export const api = {
                 .eq('qc_id', qcId);
             if (error) throw error;
 
-            await supabase
-                .from('production_orders')
-                .update({ status: 'Completed' })
-                .eq('production_order_id', qc.production_order_id);
+            if (qc.production_order_id) {
+                await supabase
+                    .from('production_orders')
+                    .update({ status: 'Completed' })
+                    .eq('production_order_id', qc.production_order_id);
+            } else if (qc.sample_order_id) {
+                await supabase
+                    .from('sample_orders')
+                    .update({ status: 'Awaiting Approval' }) // Send to Sample Jobs for final approval
+                    .eq('sample_order_id', qc.sample_order_id);
+            }
         } catch (error) {
             console.error('Error approving QC:', error);
             throw error;
@@ -1311,7 +1398,7 @@ export const api = {
 
             const { data: qc, error: fetchError } = await supabase
                 .from('quality_checks')
-                .select('production_order_id')
+                .select('production_order_id, sample_order_id')
                 .eq('qc_id', qcId)
                 .single();
             if (fetchError) throw fetchError;
@@ -1329,21 +1416,24 @@ export const api = {
             if (error) throw error;
 
             // Update production order status based on rework requirement
-            if (reworkRequired) {
+            if (qc.production_order_id) {
+                if (reworkRequired) {
+                    await supabase
+                        .from('production_orders')
+                        .update({ status: 'Rework Required', progress: 0 })
+                        .eq('production_order_id', qc.production_order_id);
+                } else {
+                    await supabase
+                        .from('production_orders')
+                        .update({ status: 'Failed' })
+                        .eq('production_order_id', qc.production_order_id);
+                }
+            } else if (qc.sample_order_id) {
+                // If sample job QC fails, send it back to "In Progress" for rework
                 await supabase
-                    .from('production_orders')
-                    .update({
-                        status: 'Rework Required',
-                        progress: 0
-                    })
-                    .eq('production_order_id', qc.production_order_id);
-            } else {
-                await supabase
-                    .from('production_orders')
-                    .update({
-                        status: 'Failed'
-                    })
-                    .eq('production_order_id', qc.production_order_id);
+                    .from('sample_orders')
+                    .update({ status: 'In Progress' })
+                    .eq('sample_order_id', qc.sample_order_id);
             }
         } catch (error) {
             console.error('Error rejecting QC:', error);

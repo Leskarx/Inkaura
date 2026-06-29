@@ -283,6 +283,7 @@ function QuotationDetail({ quotation: q, onClose, onUpdate }: QuotationDetailPro
       setCreating(true);
       await api.createProductionJob({
         quotationId: q.id,
+        sampleJobId: q.sampleJobId,
         deliveryDate: productionForm.deliveryDate,
         priority: productionForm.priority,
       });

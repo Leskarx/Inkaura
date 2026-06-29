@@ -630,11 +630,13 @@ export function ProductionJobs() {
                                         className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400"
                                     >
                                         <option value="0">Select a machine</option>
-                                        {machines.map((m) => (
-                                            <option key={m.id} value={m.id}>
-                                                {m.name} {m.type ? `(${m.type})` : ''} {m.status ? `- ${m.status}` : ''}
-                                            </option>
-                                        ))}
+                                        {machines
+                                            .filter(m => m.status === 'Active' || m.status === 'Setup') // Only show Active and Setup machines
+                                            .map((m) => (
+                                                <option key={m.id} value={m.id}>
+                                                    {m.name} {m.type ? `(${m.type})` : ''} {m.status ? `- ${m.status}` : ''}
+                                                </option>
+                                            ))}
                                     </select>
                                 </div>
 

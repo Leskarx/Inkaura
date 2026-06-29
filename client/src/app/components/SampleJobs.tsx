@@ -315,11 +315,13 @@ export function SampleJobs() {
                   className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400"
                 >
                   <option value="0">Select Machine</option>
-                  {machines.map((machine) => (
-                    <option key={machine.id} value={machine.id}>
-                      {machine.name} {machine.type ? `(${machine.type})` : ''}
-                    </option>
-                  ))}
+                  {machines
+                    .filter(m => m.status === 'Active' || m.status === 'Setup') // Only show Active and Setup machines
+                    .map((machine) => (
+                      <option key={machine.id} value={machine.id}>
+                        {machine.name} {machine.type ? `(${machine.type})` : ''}
+                      </option>
+                    ))}
                 </select>
               </div>
 

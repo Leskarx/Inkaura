@@ -17,7 +17,7 @@ import { FinanceDashboard } from "./components/FinanceDashboard";
 import { MachineManagement } from "./components/MachineManagement";
 import { ProductionDashboard } from "./components/ProductionDashboard";
 import { PackagingDashboard } from "./components/PackagingDashboard";
-import { ReportsAnalytics } from "./components/ReportsAnalytics";
+
 import { EmployeeManagement } from "./components/EmployeeManagement";
 import { CreateQuotationPage } from "./components/CreateQuotationPage";
 import { EditQuotationPage } from "./components/EditQuotationPage";
@@ -44,7 +44,7 @@ export default function App() {
               <Route path="/" element={<Navigate to="/admin" replace />} />
               <Route path="/admin" element={<AdminDashboard />} />
               <Route path="/employees" element={<EmployeeManagement />} />
-              <Route path="/reports" element={<ReportsAnalytics />} />
+
               <Route path="/sales" element={<SalesDashboard />} />
               <Route path="/customers" element={<CustomerManagement />} />
               <Route path="/quotations" element={<QuotationManagement />} />
@@ -60,7 +60,7 @@ export default function App() {
               <Route path="/packaging" element={<PackagingDashboard />} />
               <Route path="/inventory" element={<InventoryManagement />} />
               <Route path="/dispatch" element={<DispatchDashboard />} />
-              <Route path="/finance" element={<FinanceDashboard />} />
+              <Route path="/report" element={<FinanceDashboard />} />
             </Routes>
           </Layout>
       )}

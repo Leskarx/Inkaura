@@ -903,11 +903,12 @@ export function QualityControl() {
   };
 
   const filtered = checks.filter((qc) => {
+    const s = search.toLowerCase();
     const matchesSearch =
       search === "" ||
-      (qc.sample_order_id || qc.production_order_id)?.toLowerCase().includes(search.toLowerCase()) ||
-      qc.customer_name.toLowerCase().includes(search.toLowerCase()) ||
-      qc.product_name.toLowerCase().includes(search.toLowerCase());
+      (qc.sample_order_id || qc.production_order_id || "").toLowerCase().includes(s) ||
+      (qc.customer_name || "").toLowerCase().includes(s) ||
+      (qc.product_name || "").toLowerCase().includes(s);
 
     let matchStatus = true;
     if (statusFilter === "Awaiting Approval") {

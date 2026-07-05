@@ -22,11 +22,10 @@ export type Screen =
   | "operator"
   | "qc"
   | "dispatch"
-  | "finance"
   | "machines"
   | "production"
   | "packaging"
-  | "reports";
+  | "report";
 
 interface NavItem {
   id: Screen;
@@ -41,7 +40,6 @@ const navGroups: { label: string; items: NavItem[] }[] = [
     items: [
       { id: "admin", label: "Admin Dashboard", icon: <LayoutDashboard size={15} /> },
       { id: "employees", label: "Employee Management", icon: <UserCog size={15} /> },
-      { id: "reports", label: "Reports & Analytics", icon: <BarChart2 size={15} /> },
     ],
   },
   {
@@ -83,9 +81,9 @@ const navGroups: { label: string; items: NavItem[] }[] = [
     ],
   },
   {
-    label: "Finance",
+    label: "Reports",
     items: [
-      { id: "finance", label: "Finance & Reports", icon: <DollarSign size={15} /> },
+      { id: "report", label: "Reports Dashboard", icon: <BarChart2 size={15} /> },
     ],
   },
 ];
@@ -98,7 +96,6 @@ interface LayoutProps {
 const screenTitles: Record<Screen, string> = {
   admin: "Admin Dashboard",
   employees: "Employee Management",
-  reports: "Reports & Analytics",
   sales: "Sales Dashboard",
   customers: "Customer Management",
   quotations: "Quotation Management",
@@ -113,7 +110,7 @@ const screenTitles: Record<Screen, string> = {
   packaging: "Packaging",
   inventory: "Inventory Management",
   dispatch: "Dispatch Management",
-  finance: "Finance & Reports",
+  report: "Reports Dashboard",
 };
 
 export function Layout({ onLogout, children }: LayoutProps) {

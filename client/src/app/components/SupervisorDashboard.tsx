@@ -487,25 +487,28 @@ export function SupervisorDashboard() {
 
   // Filter data based on search and status
   const filteredSamples = samples.filter(job => {
-    const matchSearch = job.id.toLowerCase().includes(search.toLowerCase()) ||
-      job.customer.toLowerCase().includes(search.toLowerCase()) ||
-      job.product.toLowerCase().includes(search.toLowerCase());
+    const s = search.toLowerCase();
+    const matchSearch = (job.id || "").toLowerCase().includes(s) ||
+      (job.customer || "").toLowerCase().includes(s) ||
+      (job.product || "").toLowerCase().includes(s);
     const matchStatus = statusFilter === "All" || job.status === statusFilter;
     return matchSearch && matchStatus;
   });
 
   const filteredProduction = productionJobs.filter(job => {
-    const matchSearch = job.id.toLowerCase().includes(search.toLowerCase()) ||
-      job.customer.toLowerCase().includes(search.toLowerCase()) ||
-      job.product.toLowerCase().includes(search.toLowerCase());
+    const s = search.toLowerCase();
+    const matchSearch = (job.id || "").toLowerCase().includes(s) ||
+      (job.customer || "").toLowerCase().includes(s) ||
+      (job.product || "").toLowerCase().includes(s);
     const matchStatus = statusFilter === "All" || job.status === statusFilter;
     return matchSearch && matchStatus;
   });
 
   const filteredQC = qcChecks.filter(qc => {
-    const matchSearch = qc.production_order_id.toLowerCase().includes(search.toLowerCase()) ||
-      qc.customer_name.toLowerCase().includes(search.toLowerCase()) ||
-      qc.product_name.toLowerCase().includes(search.toLowerCase());
+    const s = search.toLowerCase();
+    const matchSearch = (qc.production_order_id || "").toLowerCase().includes(s) ||
+      (qc.customer_name || "").toLowerCase().includes(s) ||
+      (qc.product_name || "").toLowerCase().includes(s);
     const matchStatus = statusFilter === "All" || qc.overall_status === statusFilter;
     return matchSearch && matchStatus;
   });

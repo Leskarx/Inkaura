@@ -477,7 +477,7 @@ const getCurrentEmployeeId = async (): Promise<number> => {
             .from('employees')
             .select('employee_id')
             .eq('auth_user_id', user.id)
-            .single();
+            .maybeSingle();
         return emp?.employee_id ?? 1;
     } catch {
         return 1;
@@ -607,7 +607,7 @@ export const api = {
                 .from('employees')
                 .select('employee_id, full_name, email, role, department')
                 .eq('auth_user_id', user.id)
-                .single();
+                .maybeSingle();
 
             if (error || !emp) return null;
 
@@ -1163,18 +1163,12 @@ export const api = {
 
     getQualityChecks: async (): Promise<QualityCheck[]> => {
         try {
-            const { data, error } = await supabase
-                .from('quality_checks')
-                .select(QC_SELECT)
-                .order('created_at', { ascending: false });
+            const { data, error } = await supabase.rpc('get_quality_checks_enriched');
 
             if (error) throw error;
             if (!data || data.length === 0) return [];
 
-            const enriched = await Promise.all(
-                data.map(item => enrichQualityCheck(mapToQualityCheck(item)))
-            );
-            return enriched;
+            return data as QualityCheck[];
         } catch (error) {
             console.error('Error fetching quality checks:', error);
             throw error;
@@ -1200,99 +1194,27 @@ export const api = {
 
     getJobsForQC: async (): Promise<QCJob[]> => {
         try {
-            // Fetch Production Orders
-            const { data: pOrders, error: pError } = await supabase
-                .from('production_orders')
-                .select('production_order_id, status, final_quantity, quotation_id')
-                .order('created_at', { ascending: false });
+            const { data, error } = await supabase.rpc('get_jobs_for_qc');
 
-            if (pError) throw pError;
+            if (error) throw error;
+            if (!data || data.length === 0) return [];
 
-            // Fetch Sample Orders
-            const { data: sOrders, error: sError } = await supabase
-                .from('sample_orders')
-                .select('sample_order_id, status, sample_quantity, quotation_id')
-                .order('created_at', { ascending: false });
-
-            if (sError) throw sError;
-
-            const enriched: QCJob[] = [];
-
-            // Process Production Orders
-            for (const po of (pOrders || [])) {
-                if (po.status !== 'QC Pending' && po.status !== 'Completed') continue;
-
-                const { data: quotation } = await supabase
-                    .from('quotations')
-                    .select('quotation_id, customers:customer_id(company_name)')
-                    .eq('quotation_id', po.quotation_id)
-                    .single();
-
-                const { data: products } = await supabase
-                    .from('quotation_products')
-                    .select('product_name, product_type, printing_technology')
-                    .eq('quotation_id', po.quotation_id)
-                    .limit(1);
-
-                const qcStatus = await getActiveQCForOrder(po.production_order_id, 'Production');
-                const qp = products?.[0];
-                const qt = quotation as any;
-
-                enriched.push({
-                    order_id: po.production_order_id,
-                    job_type: 'Production',
-                    status: po.status,
-                    final_quantity: po.final_quantity || 0,
-                    quotation_id: po.quotation_id,
-                    customer_name: qt?.customers?.company_name || 'Unknown',
-                    product_name: safeProductName(qp?.product_name),
-                    product_type: qp?.product_type || 'Custom',
-                    printing_technology: qp?.printing_technology || 'N/A',
-                    hasActiveQC: qcStatus.hasActive,
-                    activeQCStatus: qcStatus.activeQCStatus,
-                    activeQCId: qcStatus.activeQCId,
-                });
-            }
-
-            // Process Sample Orders
-            for (const so of (sOrders || [])) {
-                if (!["QC Pending", "Awaiting Approval", "Approved", "Production Created"].includes(so.status)) continue;
-
-                const { data: quotation } = await supabase
-                    .from('quotations')
-                    .select('quotation_id, customers:customer_id(company_name)')
-                    .eq('quotation_id', so.quotation_id)
-                    .single();
-
-                const { data: products } = await supabase
-                    .from('quotation_products')
-                    .select('product_name, product_type, printing_technology')
-                    .eq('quotation_id', so.quotation_id)
-                    .limit(1);
-
-                const qcStatus = await getActiveQCForOrder(so.sample_order_id, 'Sample');
-                const qp = products?.[0];
-                const qt = quotation as any;
-
-                enriched.push({
-                    order_id: so.sample_order_id,
-                    job_type: 'Sample',
-                    status: so.status,
-                    final_quantity: so.sample_quantity || 0,
-                    quotation_id: so.quotation_id,
-                    customer_name: qt?.customers?.company_name || 'Unknown',
-                    product_name: safeProductName(qp?.product_name),
-                    product_type: qp?.product_type || 'Custom',
-                    printing_technology: qp?.printing_technology || 'N/A',
-                    hasActiveQC: qcStatus.hasActive,
-                    activeQCStatus: qcStatus.activeQCStatus,
-                    activeQCId: qcStatus.activeQCId,
-                });
-            }
-
-            return enriched;
+            return data.map((job: any) => ({
+                order_id: job.order_id,
+                job_type: job.job_type,
+                status: job.status,
+                final_quantity: job.final_quantity,
+                quotation_id: job.quotation_id,
+                customer_name: job.customer_name || 'Unknown',
+                product_name: safeProductName(job.product_name),
+                product_type: job.product_type || 'Custom',
+                printing_technology: job.printing_technology || 'N/A',
+                hasActiveQC: job.has_active_qc,
+                activeQCStatus: job.active_qc_status,
+                activeQCId: job.active_qc_id,
+            }));
         } catch (error) {
-            console.error('Error fetching production orders for QC:', error);
+            console.error('Error fetching jobs for QC:', error);
             throw error;
         }
     },

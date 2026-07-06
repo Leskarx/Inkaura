@@ -85,7 +85,7 @@ const emptyExpenseRow: ExpenseRow = {
 };
 
 // ─── Main Component ───────────────────────────────────────────
-export function FinanceDashboard() {
+export function ReportsDashboard() {
   const [loading, setLoading] = useState(true);
 
   // Filters
@@ -440,7 +440,7 @@ export function FinanceDashboard() {
       <div className="bg-white border-b border-slate-200 px-6 py-4 flex-shrink-0 sticky top-0 z-10 shadow-sm">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h1 className="text-xl font-bold text-slate-900">Finance Operations</h1>
+            <h1 className="text-xl font-bold text-slate-900">Reports Dashboard</h1>
             <p className="text-sm text-slate-500">Day-to-day financial tracking and invoicing</p>
           </div>
           <div className="flex gap-2">

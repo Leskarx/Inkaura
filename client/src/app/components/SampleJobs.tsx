@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { QuotationViewModal } from "../components/QuotationViewModal";
+import { JobSlipModal } from "./JobSlipModal"; // Import the new JobSlipModal
 import {
   Search, Plus, Calendar, User, Clock, CheckCircle, X,
   FileText, Eye, RefreshCw, AlertTriangle, FlaskConical, Factory,
@@ -76,272 +77,6 @@ const defaultStatusConfig = {
   icon: React.createElement(Clock, { size: 12 })
 };
 
-// Factory Slip Modal Component
-interface FactorySlipModalProps {
-  job: SampleJob;
-  onClose: () => void;
-  onSave: () => void;
-}
-
-function FactorySlipModal({ job, onClose, onSave }: FactorySlipModalProps) {
-  const [loading, setLoading] = useState(false);
-  const [slipData, setSlipData] = useState({
-    // Auto-filled fields
-    jobName: job.product || '',
-    customer: job.customer || '',
-    copies: job.sampleQuantity || 0,
-    jobSize: '',
-    colors: '',
-    date: new Date().toISOString().split('T')[0],
-    slipNumber: `FS-${job.id}-${Date.now().toString().slice(-4)}`,
-    machineMan: job.assignedTo || '',
-    supervisor: '',
-
-    // Supervisor fills
-    paperName: '',
-    paperQuantity: 0,
-    additionalSheets: 0,
-    boardSheets: 0,
-    coverPaper: '',
-    remarks: '',
-  });
-
-  // Load existing factory slip data if any
-  useEffect(() => {
-    const loadSlipData = async () => {
-      try {
-        const { data } = await supabase
-          .from('factory_slips')
-          .select('*')
-          .eq('job_id', job.id)
-          .eq('job_type', 'sample')
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .single();
-
-        if (data) {
-          setSlipData({
-            jobName: data.job_name || job.product,
-            customer: data.customer || job.customer,
-            copies: data.copies || job.sampleQuantity,
-            jobSize: data.job_size || '',
-            colors: data.colors || '',
-            date: data.slip_date || new Date().toISOString().split('T')[0],
-            slipNumber: data.slip_number || `FS-${job.id}-${Date.now().toString().slice(-4)}`,
-            machineMan: data.machine_man || job.assignedTo,
-            supervisor: data.supervisor || '',
-            paperName: data.paper_name || '',
-            paperQuantity: data.paper_quantity || 0,
-            additionalSheets: data.additional_sheets || 0,
-            boardSheets: data.board_sheets || 0,
-            coverPaper: data.cover_paper || '',
-            remarks: data.remarks || '',
-          });
-        }
-      } catch (error) {
-        console.log('No existing slip found, using default values');
-      }
-    };
-    loadSlipData();
-  }, [job]);
-
-  const handleSave = async () => {
-    if (!slipData.supervisor.trim()) {
-      alert('Please enter supervisor name');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const { error } = await supabase
-        .from('factory_slips')
-        .upsert({
-          job_id: job.id,
-          job_type: 'sample',
-          job_name: slipData.jobName,
-          customer: slipData.customer,
-          copies: slipData.copies,
-          job_size: slipData.jobSize,
-          colors: slipData.colors,
-          slip_date: slipData.date,
-          slip_number: slipData.slipNumber,
-          machine_man: slipData.machineMan,
-          supervisor: slipData.supervisor,
-          paper_name: slipData.paperName,
-          paper_quantity: slipData.paperQuantity,
-          additional_sheets: slipData.additionalSheets,
-          board_sheets: slipData.boardSheets,
-          cover_paper: slipData.coverPaper,
-          remarks: slipData.remarks,
-          updated_at: new Date().toISOString(),
-        }, {
-          onConflict: 'job_id,job_type'
-        });
-
-      if (error) throw error;
-
-      alert('✅ Factory Slip saved successfully!');
-      onSave();
-      onClose();
-    } catch (error) {
-      console.error('Error saving factory slip:', error);
-      alert('Failed to save factory slip. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handlePrint = () => {
-    window.print();
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[95vh] overflow-y-auto">
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50">
-          <div>
-            <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-              <Printer size={20} className="text-indigo-600" />
-              Factory Slip - {job.id}
-            </h3>
-            <p className="text-xs text-slate-500 mt-0.5">Auto-filled fields are locked. Supervisor fills paper details.</p>
-          </div>
-          <button onClick={onClose} className="p-1.5 text-slate-400 hover:text-slate-600">
-            <X size={20} />
-          </button>
-        </div>
-
-        {/* Content */}
-        <div className="p-6 space-y-6" id="factory-slip-print">
-          {/* Job Info - Auto-filled */}
-          <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4">
-            <p className="text-xs font-semibold text-indigo-700 mb-3 flex items-center gap-2">
-              <Clock size={14} /> Auto-filled Fields (Read Only)
-            </p>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div>
-                <label className="block text-xs text-slate-500 mb-0.5">Job Name</label>
-                <input type="text" className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-900" value={slipData.jobName} readOnly />
-              </div>
-              <div>
-                <label className="block text-xs text-slate-500 mb-0.5">Customer</label>
-                <input type="text" className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-900" value={slipData.customer} readOnly />
-              </div>
-              <div>
-                <label className="block text-xs text-slate-500 mb-0.5">Copies</label>
-                <input type="number" className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-900" value={slipData.copies} readOnly />
-              </div>
-              <div>
-                <label className="block text-xs text-slate-500 mb-0.5">Slip Number</label>
-                <input type="text" className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-900" value={slipData.slipNumber} readOnly />
-              </div>
-            </div>
-          </div>
-
-          {/* More Auto-filled */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div>
-              <label className="block text-xs text-slate-500 mb-0.5">Job Size</label>
-              <input type="text" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm" value={slipData.jobSize} onChange={e => setSlipData({ ...slipData, jobSize: e.target.value })} placeholder="e.g. 15x20" />
-            </div>
-            <div>
-              <label className="block text-xs text-slate-500 mb-0.5">Colors</label>
-              <input type="text" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm" value={slipData.colors} onChange={e => setSlipData({ ...slipData, colors: e.target.value })} placeholder="e.g. 4+0" />
-            </div>
-            <div>
-              <label className="block text-xs text-slate-500 mb-0.5">Date</label>
-              <input type="date" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm" value={slipData.date} onChange={e => setSlipData({ ...slipData, date: e.target.value })} />
-            </div>
-            <div>
-              <label className="block text-xs text-slate-500 mb-0.5">Machine Man</label>
-              <input type="text" className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-900" value={slipData.machineMan} readOnly />
-            </div>
-          </div>
-
-          {/* Supervisor Fills */}
-          <div className="border-t-2 border-dashed border-amber-300 pt-4">
-            <div className="flex items-center gap-2 mb-4">
-              <span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded text-xs font-bold">SUPERVISOR SECTION</span>
-              <span className="text-xs text-slate-400">— Fill the fields below</span>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-0.5">Supervisor Name *</label>
-                <input type="text" className="w-full px-3 py-2 border-2 border-amber-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500" value={slipData.supervisor} onChange={e => setSlipData({ ...slipData, supervisor: e.target.value })} placeholder="Enter supervisor name" />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-0.5">Paper Name</label>
-                <input type="text" className="w-full px-3 py-2 border-2 border-amber-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500" value={slipData.paperName} onChange={e => setSlipData({ ...slipData, paperName: e.target.value })} placeholder="e.g. Art Card 300 GSM" />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-0.5">Paper Quantity</label>
-                <input type="number" className="w-full px-3 py-2 border-2 border-amber-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500" value={slipData.paperQuantity || ''} onChange={e => setSlipData({ ...slipData, paperQuantity: Number(e.target.value) })} placeholder="Total sheets" />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-0.5">Additional Sheets</label>
-                <input type="number" className="w-full px-3 py-2 border-2 border-amber-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500" value={slipData.additionalSheets || ''} onChange={e => setSlipData({ ...slipData, additionalSheets: Number(e.target.value) })} placeholder="Extra sheets" />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-0.5">Board Sheets</label>
-                <input type="number" className="w-full px-3 py-2 border-2 border-amber-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500" value={slipData.boardSheets || ''} onChange={e => setSlipData({ ...slipData, boardSheets: Number(e.target.value) })} placeholder="Board sheets" />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-0.5">Cover Paper</label>
-                <input type="text" className="w-full px-3 py-2 border-2 border-amber-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500" value={slipData.coverPaper} onChange={e => setSlipData({ ...slipData, coverPaper: e.target.value })} placeholder="e.g. Cover 200 GSM" />
-              </div>
-            </div>
-
-            <div className="mt-4">
-              <label className="block text-xs font-semibold text-slate-700 mb-0.5">Remarks</label>
-              <textarea rows={2} className="w-full px-3 py-2 border-2 border-amber-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500" value={slipData.remarks} onChange={e => setSlipData({ ...slipData, remarks: e.target.value })} placeholder="Any special instructions..." />
-            </div>
-          </div>
-
-          {/* Footer note */}
-          <div className="text-xs text-slate-400 border-t border-slate-200 pt-4 flex items-center gap-2">
-            <Printer size={14} className="text-slate-300" />
-            <span>Printed copy goes to: <strong>Inventory</strong> and <strong>Machine Operator</strong></span>
-          </div>
-        </div>
-
-        {/* Actions */}
-        <div className="px-6 py-4 border-t border-slate-200 bg-slate-50 rounded-b-xl flex justify-end gap-3">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handlePrint}
-            className="px-4 py-2 text-sm font-medium text-white bg-slate-800 rounded-lg hover:bg-slate-900 transition-colors flex items-center gap-2"
-          >
-            <Printer size={16} /> Print Factory Slip
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={loading || !slipData.supervisor.trim()}
-            className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-          >
-            {loading ? (
-              <>
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                Saving...
-              </>
-            ) : (
-              <>
-                <Save size={16} /> Save Factory Slip
-              </>
-            )}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export function SampleJobs() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -374,9 +109,19 @@ export function SampleJobs() {
   const [showQuotationView, setShowQuotationView] = useState(false);
   const [viewQuotationId, setViewQuotationId] = useState<string | null>(null);
 
-  // State for Factory Slip Modal
-  const [showFactorySlip, setShowFactorySlip] = useState(false);
-  const [factorySlipJob, setFactorySlipJob] = useState<SampleJob | null>(null);
+  // State for Job Slip Modal (replacing Factory Slip)
+  const [showJobSlip, setShowJobSlip] = useState(false);
+  const [jobSlipData, setJobSlipData] = useState<{
+    jobId: string;
+    jobType: "sample" | "production";
+    quotationId: string;
+    customerName: string;
+    productName: string;
+    quantity: number;
+    dueDate: string;
+    machineName?: string;
+    operatorName?: string;
+  } | null>(null);
 
   // Load sample jobs
   const loadSampleJobs = async () => {
@@ -553,10 +298,20 @@ export function SampleJobs() {
     }
   };
 
-  // Open Factory Slip Modal
-  const handleOpenFactorySlip = (job: SampleJob) => {
-    setFactorySlipJob(job);
-    setShowFactorySlip(true);
+  // Open Job Slip Modal (replacing Factory Slip)
+  const handleOpenJobSlip = (job: SampleJob) => {
+    setJobSlipData({
+      jobId: job.id,
+      jobType: "sample",
+      quotationId: job.quotationId,
+      customerName: job.customer,
+      productName: job.product,
+      quantity: job.sampleQuantity,
+      dueDate: job.dueDate,
+      machineName: job.machineName || "Sample",
+      operatorName: job.assignedTo || "Unassigned",
+    });
+    setShowJobSlip(true);
   };
 
   if (loading) {
@@ -572,15 +327,22 @@ export function SampleJobs() {
 
   return (
     <div className="p-6 space-y-6">
-      {/* Factory Slip Modal */}
-      {showFactorySlip && factorySlipJob && (
-        <FactorySlipModal
-          job={factorySlipJob}
+      {/* Job Slip Modal - Using the new JobSlipModal */}
+      {showJobSlip && jobSlipData && (
+        <JobSlipModal
+          jobId={jobSlipData.jobId}
+          jobType={jobSlipData.jobType}
+          quotationId={jobSlipData.quotationId}
+          customerName={jobSlipData.customerName}
+          productName={jobSlipData.productName}
+          quantity={jobSlipData.quantity}
+          dueDate={jobSlipData.dueDate}
+          machineName={jobSlipData.machineName}
+          operatorName={jobSlipData.operatorName}
           onClose={() => {
-            setShowFactorySlip(false);
-            setFactorySlipJob(null);
+            setShowJobSlip(false);
+            setJobSlipData(null);
           }}
-          onSave={loadSampleJobs}
         />
       )}
 
@@ -760,7 +522,6 @@ export function SampleJobs() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {filtered.map((job) => {
-            // Get status config with fallback for unknown statuses
             const conf = statusConfig[job.status] || defaultStatusConfig;
 
             const isAwaitingApproval = job.status === "Awaiting Approval";
@@ -857,14 +618,14 @@ export function SampleJobs() {
                     </div>
                   )}
 
-                  {/* Factory Slip Button - Shows for In Progress jobs */}
+                  {/* Job Slip Button - Shows for In Progress jobs */}
                   {isInProgress && (
                     <button
-                      onClick={() => handleOpenFactorySlip(job)}
+                      onClick={() => handleOpenJobSlip(job)}
                       className="flex-1 flex items-center justify-center gap-1 px-3 py-2 text-xs bg-slate-900 text-white rounded-lg hover:bg-slate-700 transition-colors font-medium"
-                      title="Factory Slip"
+                      title="Job Slip"
                     >
-                      <Printer size={13} /> Factory Slip
+                      <Printer size={13} /> Job Slip
                     </button>
                   )}
 
@@ -916,24 +677,10 @@ export function SampleJobs() {
                       ✅ Sample Approved - Ready for Production
                     </div>
                   ) : isRejected ? (
-                    <button
-                      onClick={() => {
-                        setSelectedSample(job);
-                      }}
-                      className="w-full flex items-center justify-center gap-1 px-3 py-2 text-xs bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 transition-colors font-medium"
-                    >
-                      {/* Empty button */}
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => {
-                        setSelectedSample(job);
-                      }}
-                      className="w-full flex items-center justify-center gap-1 px-3 py-2 text-xs bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 transition-colors font-medium"
-                    >
-                      {/* Empty button */}
-                    </button>
-                  )}
+                    <div className="w-full text-center py-2 px-3 rounded-lg text-xs bg-red-50 text-red-700 border border-red-200">
+                      ❌ Rejected
+                    </div>
+                  ) : null}
                 </div>
               </div>
             );

@@ -85,8 +85,8 @@ function ConfirmModal({
                   type="button"
                   onClick={() => setCartonType(type)}
                   className={`px-3 py-2 rounded-lg text-xs font-semibold border transition-all ${cartonType === type
-                      ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
-                      : "bg-white text-slate-600 border-slate-300 hover:border-indigo-400 hover:bg-indigo-50"
+                    ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
+                    : "bg-white text-slate-600 border-slate-300 hover:border-indigo-400 hover:bg-indigo-50"
                     }`}
                 >
                   {type}
@@ -94,9 +94,13 @@ function ConfirmModal({
               ))}
             </div>
             {isAutoSelected && cartonType && (
-              <p className="text-[10px] text-slate-500 mt-1.5">
+              <p className="text-[10px] text-green-600 mt-1.5">
                 ✓ Carton type was selected in the Post-Development Checklist during QC approval.
-                {!cartonType && " No carton type was selected in QC. Please select one below."}
+              </p>
+            )}
+            {!isAutoSelected && (
+              <p className="text-[10px] text-amber-600 mt-1.5">
+                ⚠️ No carton type was selected in QC. Please select one below.
               </p>
             )}
           </div>
@@ -111,7 +115,7 @@ function ConfirmModal({
           </div>
 
           <p className="text-xs text-slate-500 mb-5 text-center">
-            This will move the order to <strong>Dispatch</strong> where an invoice will be generated and the order marked as delivered.
+            This will move the order to <strong>Dispatch</strong> where an invoice will be generated.
           </p>
 
           <div className="flex gap-3">
@@ -136,9 +140,7 @@ function ConfirmModal({
           </div>
           {!cartonType && (
             <p className="text-xs text-red-500 mt-2 text-center">
-              {isAutoSelected
-                ? "No carton type was selected in QC. Please select one above."
-                : "Please select a carton type"}
+              Please select a carton type before confirming
             </p>
           )}
         </div>
@@ -155,7 +157,7 @@ export function PackagingDashboard() {
   const [confirmJob, setConfirmJob] = useState<ProductionJob | null>(null);
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [successId, setSuccessId] = useState<string | null>(null);
-  const [packagingTypes, setPackagingTypes] = useState<Record<string, string>>({});
+  const [cartonTypesMap, setCartonTypesMap] = useState<Record<string, string>>({});
   const [selectedCartonType, setSelectedCartonType] = useState<string>("");
   const [isAutoSelected, setIsAutoSelected] = useState(false);
 
@@ -167,24 +169,37 @@ export function PackagingDashboard() {
     try {
       const data = await api.getPackagingJobs();
       setJobs(data);
-      // Fetch packaging_type for each job from quotation_products
+
+      // Get carton type from QC checklist for each job
       if (data.length > 0) {
-        const quotationIds = [...new Set(data.map(j => j.quotationId).filter(Boolean))];
-        if (quotationIds.length > 0) {
-          const { data: prods } = await supabase
-            .from('quotation_products')
-            .select('quotation_id, packaging_type')
-            .in('quotation_id', quotationIds);
-          if (prods) {
-            const map: Record<string, string> = {};
-            prods.forEach((p: any) => {
-              if (p.packaging_type) map[p.quotation_id] = p.packaging_type;
-            });
-            setPackagingTypes(map);
-          }
+        const jobIds = data.map(j => j.id);
+        const { data: qcData } = await supabase
+          .from('quality_checks')
+          .select('production_order_id, post_dev_checklist')
+          .in('production_order_id', jobIds)
+          .eq('approved_for_dispatch', true)
+          .order('created_at', { ascending: false });
+
+        const map: Record<string, string> = {};
+        if (qcData) {
+          // Get the latest QC for each job
+          const latestQc: Record<string, any> = {};
+          qcData.forEach((qc: any) => {
+            if (!latestQc[qc.production_order_id] || qc.created_at > latestQc[qc.production_order_id].created_at) {
+              latestQc[qc.production_order_id] = qc;
+            }
+          });
+
+          Object.values(latestQc).forEach((qc: any) => {
+            if (qc.post_dev_checklist && qc.post_dev_checklist.carton_type) {
+              map[qc.production_order_id] = qc.post_dev_checklist.carton_type;
+            }
+          });
         }
+        setCartonTypesMap(map);
       }
     } catch (e) {
+      console.error('Load error:', e);
       setError("Failed to load packaging jobs. Please retry.");
     } finally {
       setLoading(false);
@@ -201,13 +216,11 @@ export function PackagingDashboard() {
     }
     setProcessingId(confirmJob.id);
     try {
-      // Update the job with carton type and status
       await api.markAsPackaged(confirmJob.id, selectedCartonType);
       setSuccessId(confirmJob.id);
       setConfirmJob(null);
       setSelectedCartonType("");
       setIsAutoSelected(false);
-      // Remove from list after short delay
       setTimeout(() => {
         setJobs(prev => prev.filter(j => j.id !== confirmJob.id));
         setSuccessId(null);
@@ -221,28 +234,11 @@ export function PackagingDashboard() {
   };
 
   const handleOpenConfirmModal = (job: ProductionJob) => {
-    // Pre-fill carton type if available from QC
-    const existingType = packagingTypes[job.quotationId] || "";
+    const existingType = cartonTypesMap[job.id] || "";
     setSelectedCartonType(existingType);
     setIsAutoSelected(!!existingType);
     setConfirmJob(job);
   };
-
-  const kpis = [
-    {
-      label: "Awaiting Packaging",
-      value: jobs.length,
-      icon: <Box size={16} />,
-      color: "text-blue-600 bg-blue-50",
-    },
-    {
-      label: "Ready for Dispatch",
-      value: "→",
-      icon: <ChevronRight size={16} />,
-      color: "text-purple-600 bg-purple-50",
-      sub: "Goes to Dispatch tab",
-    },
-  ];
 
   return (
     <div className="p-6 space-y-6">
@@ -364,17 +360,17 @@ export function PackagingDashboard() {
           {jobs.map((job) => {
             const isSuccess = successId === job.id;
             const isProcessing = processingId === job.id;
-            const existingCartonType = packagingTypes[job.quotationId] || "";
+            const existingCartonType = cartonTypesMap[job.id] || "";
             const hasCartonType = !!existingCartonType;
 
             return (
               <div
                 key={job.id}
                 className={`bg-card border rounded-xl p-5 transition-all duration-300 ${isSuccess
-                    ? "border-green-400 bg-green-50/50 shadow-md shadow-green-100"
-                    : hasCartonType
-                      ? "border-indigo-200 shadow-sm shadow-indigo-50"
-                      : "border-border hover:shadow-sm"
+                  ? "border-green-400 bg-green-50/50 shadow-md shadow-green-100"
+                  : hasCartonType
+                    ? "border-indigo-200 shadow-sm shadow-indigo-50"
+                    : "border-border hover:shadow-sm"
                   }`}
               >
                 {/* Job header */}
@@ -390,10 +386,10 @@ export function PackagingDashboard() {
                         Completed
                       </span>
                       <span className={`text-xs px-1.5 py-0.5 rounded border font-medium ${job.priority === "High"
-                          ? "bg-red-50 text-red-600 border-red-200"
-                          : job.priority === "Medium"
-                            ? "bg-amber-50 text-amber-600 border-amber-200"
-                            : "bg-slate-50 text-slate-500 border-slate-200"
+                        ? "bg-red-50 text-red-600 border-red-200"
+                        : job.priority === "Medium"
+                          ? "bg-amber-50 text-amber-600 border-amber-200"
+                          : "bg-slate-50 text-slate-500 border-slate-200"
                         }`}>
                         {job.priority}
                       </span>
@@ -475,8 +471,8 @@ export function PackagingDashboard() {
                     onClick={() => handleOpenConfirmModal(job)}
                     disabled={isProcessing}
                     className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold text-white transition-colors disabled:opacity-50 ${hasCartonType
-                        ? "bg-green-600 hover:bg-green-700"
-                        : "bg-indigo-600 hover:bg-indigo-700"
+                      ? "bg-green-600 hover:bg-green-700"
+                      : "bg-indigo-600 hover:bg-indigo-700"
                       }`}
                   >
                     {isProcessing ? (
@@ -501,8 +497,8 @@ export function PackagingDashboard() {
           <Clock size={12} className="flex-shrink-0 mt-0.5" />
           <span>
             Carton types are <strong className="text-green-600">auto-selected</strong> from the QC Post-Development Checklist.
-            {Object.values(packagingTypes).filter(Boolean).length === 0 && (
-              <span className="text-amber-600"> No carton types found — please ensure QC checklist was completed.</span>
+            {Object.values(cartonTypesMap).filter(Boolean).length === 0 && (
+              <span className="text-amber-600"> No carton types found — please ensure QC checklist was completed with carton type selection.</span>
             )}
           </span>
         </div>

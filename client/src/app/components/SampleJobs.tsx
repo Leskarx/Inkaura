@@ -68,6 +68,15 @@ const statusConfig: Record<SampleStatus, { label: string; bg: string; text: stri
   },
 };
 
+// Default status config for unknown statuses
+const defaultStatusConfig = {
+  label: "Unknown",
+  bg: "bg-gray-50",
+  text: "text-gray-600",
+  border: "border-gray-200",
+  icon: React.createElement(Clock, { size: 12 })
+};
+
 export function SampleJobs() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -468,7 +477,9 @@ export function SampleJobs() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {filtered.map((job) => {
-            const conf = statusConfig[job.status];
+            // Get status config with fallback for unknown statuses
+            const conf = statusConfig[job.status] || defaultStatusConfig;
+
             const isAwaitingApproval = job.status === "Awaiting Approval";
             const isProductionCreated = job.status === "Production Created";
             const isApproved = job.status === "Approved";
@@ -629,7 +640,7 @@ export function SampleJobs() {
                       }}
                       className="w-full flex items-center justify-center gap-1 px-3 py-2 text-xs bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 transition-colors font-medium"
                     >
-
+                      {/* Empty button - you might want to add something here */}
                     </button>
                   ) : (
                     <button
@@ -638,7 +649,7 @@ export function SampleJobs() {
                       }}
                       className="w-full flex items-center justify-center gap-1 px-3 py-2 text-xs bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 transition-colors font-medium"
                     >
-
+                      {/* Empty button - you might want to add something here */}
                     </button>
                   )}
                 </div>

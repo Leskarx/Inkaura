@@ -20,7 +20,7 @@ import {
 } from "../server/api";
 
 // ─── Constants ────────────────────────────────────────────────
-const RATINGS     = ["Excellent", "Good", "Fair", "Poor", "NA"] as const;
+const RATINGS = ["Excellent", "Good", "Fair", "Poor", "NA"] as const;
 const CHECK_TYPES = [
   "Pre-Press",
   "During Production",
@@ -34,12 +34,12 @@ const DEFECT_TYPES = [
   "Binding Defect", "Other",
 ];
 const CHECKLIST = [
-  { id: "color_accuracy",       label: "Color density matches approved proof (±0.05 D)", category: "Color",        field: "color_accuracy"       },
-  { id: "print_quality",        label: "No visible hickeys, spots, or mottling",          category: "Print Quality", field: "print_quality"        },
-  { id: "material_quality",     label: "Material quality meets specification",            category: "Material",     field: "material_quality"     },
-  { id: "dimensional_accuracy", label: "Cutting/die size within ±0.5mm tolerance",       category: "Dimensions",   field: "dimensional_accuracy" },
-  { id: "finishing_quality",    label: "Lamination — no bubbles, wrinkles, or peeling",  category: "Finishing",    field: "finishing_quality"    },
-  { id: "binding_quality",      label: "Binding quality meets specification",             category: "Binding",      field: "binding_quality"      },
+  { id: "color_accuracy", label: "Color density matches approved proof (±0.05 D)", category: "Color", field: "color_accuracy" },
+  { id: "print_quality", label: "No visible hickeys, spots, or mottling", category: "Print Quality", field: "print_quality" },
+  { id: "material_quality", label: "Material quality meets specification", category: "Material", field: "material_quality" },
+  { id: "dimensional_accuracy", label: "Cutting/die size within ±0.5mm tolerance", category: "Dimensions", field: "dimensional_accuracy" },
+  { id: "finishing_quality", label: "Lamination — no bubbles, wrinkles, or peeling", category: "Finishing", field: "finishing_quality" },
+  { id: "binding_quality", label: "Binding quality meets specification", category: "Binding", field: "binding_quality" },
 ] as const;
 
 const POST_DEV_CHECKLIST_ITEMS: {
@@ -47,50 +47,50 @@ const POST_DEV_CHECKLIST_ITEMS: {
   label: string;
   category: string;
 }[] = [
-  { id: "client_approval_present",   label: "Presence of Client Approval of Artwork",                              category: "Documentation" },
-  { id: "punching_registration",     label: "Check Punching Registration on every carton",                         category: "Registration"  },
-  { id: "printing_defects_check",    label: "Check for printing defects (color consistency, registration, etc.)",  category: "Print Quality" },
-  { id: "finishing_correct",         label: "Confirm correct finishing (lamination, varnish, foil, embossing)",    category: "Finishing"     },
-  { id: "cutting_folding_binding",   label: "Ensure proper cutting, folding, and binding (if applicable)",         category: "Cutting"       },
-  { id: "product_count_verified",    label: "Verify product count against job order",                              category: "Counting"      },
-  { id: "carton_pasting_direction",  label: "Carton pasting direction",                                            category: "Assembly"      },
-  { id: "alignment_precision",       label: "Check alignment and precision of final trims",                        category: "Trimming"      },
-  { id: "excess_paper_removed",      label: "Remove any excess paper or edges",                                    category: "Cleanup"       },
-  { id: "clean_smooth_edges",        label: "Ensure clean and smooth edges",                                       category: "Finishing"     },
-  { id: "correct_labels_applied",    label: "Apply correct labels (barcodes, batch numbers, job IDs)",             category: "Labeling"      },
-  { id: "legal_compliance_markings", label: "Include necessary legal or compliance markings",                      category: "Compliance"    },
-];
+    { id: "client_approval_present", label: "Presence of Client Approval of Artwork", category: "Documentation" },
+    { id: "punching_registration", label: "Check Punching Registration on every carton", category: "Registration" },
+    { id: "printing_defects_check", label: "Check for printing defects (color consistency, registration, etc.)", category: "Print Quality" },
+    { id: "finishing_correct", label: "Confirm correct finishing (lamination, varnish, foil, embossing)", category: "Finishing" },
+    { id: "cutting_folding_binding", label: "Ensure proper cutting, folding, and binding (if applicable)", category: "Cutting" },
+    { id: "product_count_verified", label: "Verify product count against job order", category: "Counting" },
+    { id: "carton_pasting_direction", label: "Carton pasting direction", category: "Assembly" },
+    { id: "alignment_precision", label: "Check alignment and precision of final trims", category: "Trimming" },
+    { id: "excess_paper_removed", label: "Remove any excess paper or edges", category: "Cleanup" },
+    { id: "clean_smooth_edges", label: "Ensure clean and smooth edges", category: "Finishing" },
+    { id: "correct_labels_applied", label: "Apply correct labels (barcodes, batch numbers, job IDs)", category: "Labeling" },
+    { id: "legal_compliance_markings", label: "Include necessary legal or compliance markings", category: "Compliance" },
+  ];
 const CARTON_TYPES = ["RTI", "STI", "CLB", "SLB"] as const;
 const DEFAULT_CHECKLIST: PostDevChecklist = {
-  client_approval_present:   false,
-  carton_type:               "",
-  punching_registration:     false,
-  printing_defects_check:    false,
-  finishing_correct:         false,
-  cutting_folding_binding:   false,
-  product_count_verified:    false,
-  carton_pasting_direction:  false,
-  alignment_precision:       false,
-  excess_paper_removed:      false,
-  clean_smooth_edges:        false,
-  correct_labels_applied:    false,
+  client_approval_present: false,
+  carton_type: "",
+  punching_registration: false,
+  printing_defects_check: false,
+  finishing_correct: false,
+  cutting_folding_binding: false,
+  product_count_verified: false,
+  carton_pasting_direction: false,
+  alignment_precision: false,
+  excess_paper_removed: false,
+  clean_smooth_edges: false,
+  correct_labels_applied: false,
   legal_compliance_markings: false,
-  checker_notes:             "",
+  checker_notes: "",
 };
 
-const canSubmitQC  = (role: string) => hasQCSubmitRole(role);
+const canSubmitQC = (role: string) => hasQCSubmitRole(role);
 const canApproveQC = (role: string) => hasQCApproveRole(role);
-const SUBMIT_ROLE_LABELS  = ["Admin", "Supervisor", "QC", "Quality"];
+const SUBMIT_ROLE_LABELS = ["Admin", "Supervisor", "QC", "Quality"];
 const APPROVE_ROLE_LABELS = ["Admin", "Supervisor"];
 
 // ─── Small UI helpers ─────────────────────────────────────────
 function RatingBadge({ rating }: { rating: string }) {
   const map: Record<string, string> = {
     Excellent: "bg-green-100 text-green-700 border-green-200",
-    Good:      "bg-blue-100 text-blue-700 border-blue-200",
-    Fair:      "bg-amber-100 text-amber-700 border-amber-200",
-    Poor:      "bg-red-100 text-red-700 border-red-200",
-    NA:        "bg-slate-100 text-slate-500 border-slate-200",
+    Good: "bg-blue-100 text-blue-700 border-blue-200",
+    Fair: "bg-amber-100 text-amber-700 border-amber-200",
+    Poor: "bg-red-100 text-red-700 border-red-200",
+    NA: "bg-slate-100 text-slate-500 border-slate-200",
   };
   return (
     <span className={`inline-flex px-2 py-0.5 rounded border text-xs font-medium ${map[rating] ?? map.NA}`}>
@@ -101,22 +101,22 @@ function RatingBadge({ rating }: { rating: string }) {
 
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, string> = {
-    Passed:              "bg-green-50 text-green-700 border-green-200",
-    Failed:              "bg-red-50 text-red-700 border-red-200",
-    Pending:             "bg-amber-50 text-amber-700 border-amber-200",
-    Rework:              "bg-orange-50 text-orange-700 border-orange-200",
-    "Rework Required":   "bg-orange-50 text-orange-700 border-orange-200",
+    Passed: "bg-green-50 text-green-700 border-green-200",
+    Failed: "bg-red-50 text-red-700 border-red-200",
+    Pending: "bg-amber-50 text-amber-700 border-amber-200",
+    Rework: "bg-orange-50 text-orange-700 border-orange-200",
+    "Rework Required": "bg-orange-50 text-orange-700 border-orange-200",
     "Awaiting Approval": "bg-blue-50 text-blue-700 border-blue-200",
-    Approved:            "bg-green-50 text-green-700 border-green-200",
+    Approved: "bg-green-50 text-green-700 border-green-200",
   };
   const icons: Record<string, React.ReactNode> = {
-    Passed:              <CheckCircle size={11} />,
-    Failed:              <XCircle size={11} />,
-    Pending:             <Clock size={11} />,
-    Rework:              <RotateCcw size={11} />,
-    "Rework Required":   <RotateCcw size={11} />,
+    Passed: <CheckCircle size={11} />,
+    Failed: <XCircle size={11} />,
+    Pending: <Clock size={11} />,
+    Rework: <RotateCcw size={11} />,
+    "Rework Required": <RotateCcw size={11} />,
     "Awaiting Approval": <ShieldCheck size={11} />,
-    Approved:            <CheckCircle size={11} />,
+    Approved: <CheckCircle size={11} />,
   };
   return (
     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded border text-xs font-medium ${map[status] ?? map.Pending}`}>
@@ -128,11 +128,11 @@ function StatusBadge({ status }: { status: string }) {
 function RoleBadge({ role }: { role: string }) {
   const r = role.toLowerCase();
   let style = "bg-slate-100 text-slate-600";
-  if (r === "admin")                                                      style = "bg-red-100 text-red-700";
-  else if (r === "supervisor")                                            style = "bg-purple-100 text-purple-700";
-  else if (r === "qc" || r === "quality" || r === "qc_team")             style = "bg-blue-100 text-blue-700";
-  else if (r === "sales" || r === "sales_executive")                      style = "bg-green-100 text-green-700";
-  else if (r === "finance")                                               style = "bg-orange-100 text-orange-700";
+  if (r === "admin") style = "bg-red-100 text-red-700";
+  else if (r === "supervisor") style = "bg-purple-100 text-purple-700";
+  else if (r === "qc" || r === "quality" || r === "qc_team") style = "bg-blue-100 text-blue-700";
+  else if (r === "sales" || r === "sales_executive") style = "bg-green-100 text-green-700";
+  else if (r === "finance") style = "bg-orange-100 text-orange-700";
   return (
     <span className={`inline-flex px-2 py-0.5 rounded text-xs font-semibold ${style}`}>
       {role}
@@ -186,13 +186,13 @@ function PostDevChecklistPanel({
   checklist, onChange, readOnly = false,
 }: {
   checklist: PostDevChecklist;
-  onChange:  (c: PostDevChecklist) => void;
+  onChange: (c: PostDevChecklist) => void;
   readOnly?: boolean;
 }) {
-  const completed  = POST_DEV_CHECKLIST_ITEMS.filter((i) => checklist[i.id]).length + (checklist.carton_type ? 1 : 0);
-  const total      = POST_DEV_CHECKLIST_ITEMS.length + 1;
-  const allDone    = completed === total;
-  const pct        = Math.round((completed / total) * 100);
+  const completed = POST_DEV_CHECKLIST_ITEMS.filter((i) => checklist[i.id]).length + (checklist.carton_type ? 1 : 0);
+  const total = POST_DEV_CHECKLIST_ITEMS.length + 1;
+  const allDone = completed === total;
+  const pct = Math.round((completed / total) * 100);
 
   return (
     <div className="space-y-3">
@@ -220,17 +220,15 @@ function PostDevChecklistPanel({
 
       <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
         <div
-          className={`h-full rounded-full transition-all duration-500 ${
-            allDone ? "bg-green-500" : pct > 50 ? "bg-amber-500" : "bg-orange-400"
-          }`}
+          className={`h-full rounded-full transition-all duration-500 ${allDone ? "bg-green-500" : pct > 50 ? "bg-amber-500" : "bg-orange-400"
+            }`}
           style={{ width: `${pct}%` }}
         />
       </div>
 
       {/* Carton Type */}
-      <div className={`flex items-center justify-between p-3 rounded-lg border transition-all ${
-        checklist.carton_type ? "bg-green-50/50 border-green-200" : "bg-slate-50/50 border-slate-100"
-      }`}>
+      <div className={`flex items-center justify-between p-3 rounded-lg border transition-all ${checklist.carton_type ? "bg-green-50/50 border-green-200" : "bg-slate-50/50 border-slate-100"
+        }`}>
         <div className="flex-1 min-w-0 mr-4">
           <p className="text-xs text-slate-700 font-medium">Carton Type (RTI, STI, CLB, SLB)</p>
           <p className="text-[10px] text-slate-400 mt-0.5">Registration</p>
@@ -241,11 +239,10 @@ function PostDevChecklistPanel({
               key={type}
               disabled={readOnly}
               onClick={() => onChange({ ...checklist, carton_type: checklist.carton_type === type ? "" : type })}
-              className={`px-2.5 py-1 text-[11px] rounded-lg border font-medium transition-all ${
-                checklist.carton_type === type
+              className={`px-2.5 py-1 text-[11px] rounded-lg border font-medium transition-all ${checklist.carton_type === type
                   ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
                   : "bg-white text-slate-500 border-slate-200 hover:border-slate-300"
-              } ${readOnly ? "cursor-default opacity-70" : "cursor-pointer"}`}
+                } ${readOnly ? "cursor-default opacity-70" : "cursor-pointer"}`}
             >
               {type}
             </button>
@@ -261,15 +258,13 @@ function PostDevChecklistPanel({
             <div
               key={item.id}
               onClick={() => { if (!readOnly) onChange({ ...checklist, [item.id]: !checked }); }}
-              className={`flex items-center gap-3 p-2.5 rounded-lg border transition-all ${
-                checked
+              className={`flex items-center gap-3 p-2.5 rounded-lg border transition-all ${checked
                   ? "bg-green-50/50 border-green-200"
                   : "bg-white border-slate-100 hover:border-slate-200 hover:bg-slate-50/50"
-              } ${readOnly ? "cursor-default" : "cursor-pointer"}`}
+                } ${readOnly ? "cursor-default" : "cursor-pointer"}`}
             >
-              <div className={`w-5 h-5 rounded flex items-center justify-center flex-shrink-0 border-2 transition-all ${
-                checked ? "bg-green-500 border-green-500 text-white" : "bg-white border-slate-300"
-              }`}>
+              <div className={`w-5 h-5 rounded flex items-center justify-center flex-shrink-0 border-2 transition-all ${checked ? "bg-green-500 border-green-500 text-white" : "bg-white border-slate-300"
+                }`}>
                 {checked && <Check size={12} strokeWidth={3} />}
               </div>
               <div className="flex-1 min-w-0">
@@ -278,9 +273,8 @@ function PostDevChecklistPanel({
                   {item.label}
                 </p>
               </div>
-              <span className={`text-[10px] px-1.5 py-0.5 rounded flex-shrink-0 ${
-                checked ? "bg-green-100 text-green-600" : "bg-slate-100 text-slate-400"
-              }`}>
+              <span className={`text-[10px] px-1.5 py-0.5 rounded flex-shrink-0 ${checked ? "bg-green-100 text-green-600" : "bg-slate-100 text-slate-400"
+                }`}>
                 {item.category}
               </span>
             </div>
@@ -353,32 +347,32 @@ function QCHistoryPanel({ jobId, jobType }: { jobId: string; jobType: "Productio
 
 // ─── New QC Modal ─────────────────────────────────────────────
 interface NewQCModalProps {
-  jobs:                QCJob[];
+  jobs: QCJob[];
   preSelectedOrderId?: string;
-  currentEmployee:     CurrentEmployee | null;
-  onClose:             () => void;
-  onSubmit:            (payload: CreateQualityCheckRequest) => Promise<void>;
+  currentEmployee: CurrentEmployee | null;
+  onClose: () => void;
+  onSubmit: (payload: CreateQualityCheckRequest) => Promise<void>;
 }
 
 function NewQCModal({ jobs, preSelectedOrderId = "", currentEmployee, onClose, onSubmit }: NewQCModalProps) {
-  const [submitting,  setSubmitting]  = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [form, setForm] = useState<CreateQualityCheckRequest & { job_type?: "Production" | "Sample" }>({
-    production_order_id:  preSelectedOrderId,
-    job_type:             jobs.find((j) => j.order_id === preSelectedOrderId)?.job_type || "Production",
-    check_type:           "Post Production",
-    color_accuracy:       "Good",
-    print_quality:        "Good",
-    binding_quality:      "Good",
-    material_quality:     "Good",
+    production_order_id: preSelectedOrderId,
+    job_type: jobs.find((j) => j.order_id === preSelectedOrderId)?.job_type || "Production",
+    check_type: "Post Production",
+    color_accuracy: "Good",
+    print_quality: "Good",
+    binding_quality: "Good",
+    material_quality: "Good",
     dimensional_accuracy: "Good",
-    finishing_quality:    "Good",
-    overall_status:       "Pending",
-    defect_quantity:      0,
-    rework_required:      false,
+    finishing_quality: "Good",
+    overall_status: "Pending",
+    defect_quantity: 0,
+    rework_required: false,
   });
 
-  const userRole      = currentEmployee?.role || "";
+  const userRole = currentEmployee?.role || "";
   const hasSubmitPerm = canSubmitQC(userRole);
 
   // Auto-calculate overall status
@@ -414,9 +408,9 @@ function NewQCModal({ jobs, preSelectedOrderId = "", currentEmployee, onClose, o
     }
   };
 
-  const selectedJob            = jobs.find((j) => j.order_id === form.production_order_id);
+  const selectedJob = jobs.find((j) => j.order_id === form.production_order_id);
   const selectedJobHasActiveQC = selectedJob?.hasActiveQC ?? false;
-  const selectedJobQCStatus    = selectedJob?.activeQCStatus;
+  const selectedJobQCStatus = selectedJob?.activeQCStatus;
 
   return (
     <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
@@ -465,7 +459,7 @@ function NewQCModal({ jobs, preSelectedOrderId = "", currentEmployee, onClose, o
                       setForm((f) => ({
                         ...f,
                         production_order_id: e.target.value,
-                        job_type:            selected?.job_type,
+                        job_type: selected?.job_type,
                       }));
                     }}
                     className="w-full appearance-none pl-3 pr-8 py-2 text-sm border border-slate-200
@@ -553,11 +547,10 @@ function NewQCModal({ jobs, preSelectedOrderId = "", currentEmployee, onClose, o
                         <button
                           key={type}
                           onClick={() => setForm((f) => ({ ...f, check_type: type }))}
-                          className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${
-                            form.check_type === type
+                          className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${form.check_type === type
                               ? "bg-indigo-600 text-white border-indigo-600"
                               : "bg-white text-slate-600 border-slate-200 hover:border-slate-300"
-                          }`}
+                            }`}
                         >
                           {type}
                         </button>
@@ -590,13 +583,12 @@ function NewQCModal({ jobs, preSelectedOrderId = "", currentEmployee, onClose, o
                   </div>
 
                   {/* Auto-calculated result */}
-                  <div className={`flex items-center justify-between p-3 rounded-lg border ${
-                    form.overall_status === "Passed"
+                  <div className={`flex items-center justify-between p-3 rounded-lg border ${form.overall_status === "Passed"
                       ? "bg-green-50 border-green-200"
                       : form.overall_status === "Failed"
-                      ? "bg-red-50 border-red-200"
-                      : "bg-amber-50 border-amber-200"
-                  }`}>
+                        ? "bg-red-50 border-red-200"
+                        : "bg-amber-50 border-amber-200"
+                    }`}>
                     <div>
                       <p className="text-sm font-semibold text-slate-700">Auto-calculated Result</p>
                       {form.overall_status === "Passed" && (
@@ -720,10 +712,10 @@ function NewQCModal({ jobs, preSelectedOrderId = "", currentEmployee, onClose, o
             {submitting
               ? "Submitting..."
               : !hasSubmitPerm
-              ? "No Permission"
-              : selectedJobHasActiveQC
-              ? "QC Already Submitted"
-              : "Submit QC Report"}
+                ? "No Permission"
+                : selectedJobHasActiveQC
+                  ? "QC Already Submitted"
+                  : "Submit QC Report"}
           </button>
           <button
             onClick={onClose}
@@ -740,27 +732,27 @@ function NewQCModal({ jobs, preSelectedOrderId = "", currentEmployee, onClose, o
 
 // ─── QC Detail Modal ──────────────────────────────────────────
 interface QCDetailModalProps {
-  qc:              QualityCheck;
+  qc: QualityCheck;
   currentEmployee: CurrentEmployee | null;
-  onClose:         () => void;
-  onApprove:       (id: number, notes?: string, checklist?: PostDevChecklist) => Promise<void>;
-  onReject:        (id: number, desc: string, rework: boolean, reworkDesc?: string) => Promise<void>;
+  onClose: () => void;
+  onApprove: (id: number, notes?: string, checklist?: PostDevChecklist) => Promise<void>;
+  onReject: (id: number, desc: string, rework: boolean, reworkDesc?: string) => Promise<void>;
 }
 
 function QCDetailModal({ qc, currentEmployee, onClose, onApprove, onReject }: QCDetailModalProps) {
-  const [action,        setAction]        = useState<"" | "approve" | "reject">("");
-  const [notes,         setNotes]         = useState("");
-  const [defectDesc,    setDefectDesc]    = useState(qc.defect_description || "");
-  const [rework,        setRework]        = useState(qc.rework_required);
-  const [reworkDesc,    setReworkDesc]    = useState(qc.rework_description || "");
-  const [submitting,    setSubmitting]    = useState(false);
-  const [checklist,     setChecklist]     = useState<PostDevChecklist>(
+  const [action, setAction] = useState<"" | "approve" | "reject">("");
+  const [notes, setNotes] = useState("");
+  const [defectDesc, setDefectDesc] = useState(qc.defect_description || "");
+  const [rework, setRework] = useState(qc.rework_required);
+  const [reworkDesc, setReworkDesc] = useState(qc.rework_description || "");
+  const [submitting, setSubmitting] = useState(false);
+  const [checklist, setChecklist] = useState<PostDevChecklist>(
     qc.post_dev_checklist || { ...DEFAULT_CHECKLIST }
   );
   const [showChecklist, setShowChecklist] = useState(false);
-  const [actionError,   setActionError]   = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
-  const userRole       = currentEmployee?.role || "";
+  const userRole = currentEmployee?.role || "";
   const hasApprovePerm = canApproveQC(userRole);
 
   // Can act = report is Passed and NOT yet approved
@@ -790,12 +782,12 @@ function QCDetailModal({ qc, currentEmployee, onClose, onApprove, onReject }: QC
   };
 
   const ratings = [
-    { label: "Color Accuracy",       value: qc.color_accuracy       },
-    { label: "Print Quality",        value: qc.print_quality        },
-    { label: "Material Quality",     value: qc.material_quality     },
+    { label: "Color Accuracy", value: qc.color_accuracy },
+    { label: "Print Quality", value: qc.print_quality },
+    { label: "Material Quality", value: qc.material_quality },
     { label: "Dimensional Accuracy", value: qc.dimensional_accuracy },
-    { label: "Finishing Quality",    value: qc.finishing_quality    },
-    { label: "Binding Quality",      value: qc.binding_quality      },
+    { label: "Finishing Quality", value: qc.finishing_quality },
+    { label: "Binding Quality", value: qc.binding_quality },
   ];
 
   const isSample = !!qc.sample_order_id;
@@ -821,8 +813,8 @@ function QCDetailModal({ qc, currentEmployee, onClose, onApprove, onReject }: QC
               )}
               <StatusBadge status={
                 qc.approved_for_dispatch ? "Approved" :
-                qc.overall_status === "Passed" ? "Awaiting Approval" :
-                qc.overall_status
+                  qc.overall_status === "Passed" ? "Awaiting Approval" :
+                    qc.overall_status
               } />
             </div>
             <p className="text-slate-400 text-xs mt-0.5">
@@ -839,11 +831,11 @@ function QCDetailModal({ qc, currentEmployee, onClose, onApprove, onReject }: QC
           {/* Job info */}
           <div className="grid grid-cols-2 gap-3 text-xs">
             {[
-              ["Product",    qc.product_name],
-              ["Customer",   qc.customer_name],
+              ["Product", qc.product_name],
+              ["Customer", qc.customer_name],
               ["Check Type", qc.check_type],
-              ["Quantity",   `${qc.quantity.toLocaleString()} pcs`],
-              ["Inspector",  qc.checked_by_name],
+              ["Quantity", `${qc.quantity.toLocaleString()} pcs`],
+              ["Inspector", qc.checked_by_name],
               ["Check Date", new Date(qc.check_date).toLocaleDateString("en-IN")],
             ].map(([l, v]) => (
               <div key={l} className="bg-slate-50 rounded-lg p-2.5">
@@ -938,11 +930,10 @@ function QCDetailModal({ qc, currentEmployee, onClose, onApprove, onReject }: QC
                     <button
                       onClick={() => { setAction("approve"); setActionError(null); }}
                       className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl
-                        text-sm transition-all font-semibold ${
-                        action === "approve"
+                        text-sm transition-all font-semibold ${action === "approve"
                           ? "bg-green-600 text-white"
                           : "bg-green-50 text-green-700 border border-green-200 hover:bg-green-100"
-                      }`}
+                        }`}
                     >
                       <ThumbsUp size={15} />
                       {isSample ? "Approve Sample" : "Approve for Dispatch"}
@@ -950,11 +941,10 @@ function QCDetailModal({ qc, currentEmployee, onClose, onApprove, onReject }: QC
                     <button
                       onClick={() => { setAction("reject"); setActionError(null); }}
                       className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl
-                        text-sm transition-all font-semibold ${
-                        action === "reject"
+                        text-sm transition-all font-semibold ${action === "reject"
                           ? "bg-red-600 text-white"
                           : "bg-red-50 text-red-700 border border-red-200 hover:bg-red-100"
-                      }`}
+                        }`}
                     >
                       <ThumbsDown size={15} /> Reject & Rework
                     </button>
@@ -963,11 +953,10 @@ function QCDetailModal({ qc, currentEmployee, onClose, onApprove, onReject }: QC
                   {/* Approve form */}
                   {action === "approve" && (
                     <div className="space-y-4">
-                      <div className={`p-4 rounded-xl border-2 transition-all ${
-                        checklistDone
+                      <div className={`p-4 rounded-xl border-2 transition-all ${checklistDone
                           ? "border-green-200 bg-green-50/30"
                           : "border-amber-200 bg-amber-50/30"
-                      }`}>
+                        }`}>
                         <div className="flex items-center justify-between mb-3">
                           <button
                             onClick={() => setShowChecklist(!showChecklist)}
@@ -988,13 +977,12 @@ function QCDetailModal({ qc, currentEmployee, onClose, onApprove, onReject }: QC
                           </button>
                           <button
                             onClick={() => setShowChecklist(!showChecklist)}
-                            className={`px-2.5 py-1 text-[11px] rounded-lg border font-medium transition-all ${
-                              showChecklist
+                            className={`px-2.5 py-1 text-[11px] rounded-lg border font-medium transition-all ${showChecklist
                                 ? "bg-slate-800 text-white border-slate-800"
                                 : checklistDone
-                                ? "bg-green-100 text-green-700 border-green-200"
-                                : "bg-amber-100 text-amber-700 border-amber-200"
-                            }`}
+                                  ? "bg-green-100 text-green-700 border-green-200"
+                                  : "bg-amber-100 text-amber-700 border-amber-200"
+                              }`}
                           >
                             {showChecklist ? "Collapse" : checklistDone ? "Review" : "Open Checklist"}
                           </button>
@@ -1085,21 +1073,20 @@ function QCDetailModal({ qc, currentEmployee, onClose, onApprove, onReject }: QC
                         (action === "reject" && !defectDesc.trim())
                       }
                       className={`w-full py-2.5 rounded-xl text-sm font-semibold text-white
-                        transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-                        action === "approve" && !checklistDone
+                        transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${action === "approve" && !checklistDone
                           ? "bg-amber-500 hover:bg-amber-600"
                           : action === "approve"
-                          ? "bg-green-600 hover:bg-green-700"
-                          : "bg-red-600 hover:bg-red-700"
-                      }`}
+                            ? "bg-green-600 hover:bg-green-700"
+                            : "bg-red-600 hover:bg-red-700"
+                        }`}
                     >
                       {submitting
                         ? "Processing..."
                         : action === "approve" && !checklistDone
-                        ? "Complete Checklist First"
-                        : action === "approve"
-                        ? isSample ? "✓ Approve Sample" : "✓ Approve for Dispatch"
-                        : "✗ Confirm Rejection & Send for Rework"}
+                          ? "Complete Checklist First"
+                          : action === "approve"
+                            ? isSample ? "✓ Approve Sample" : "✓ Approve for Dispatch"
+                            : "✗ Confirm Rejection & Send for Rework"}
                     </button>
                   )}
                 </div>
@@ -1134,7 +1121,7 @@ function QCDetailModal({ qc, currentEmployee, onClose, onApprove, onReject }: QC
                   </div>
                   <PostDevChecklistPanel
                     checklist={qc.post_dev_checklist}
-                    onChange={() => {}}
+                    onChange={() => { }}
                     readOnly={true}
                   />
                 </div>
@@ -1162,19 +1149,19 @@ function QCDetailModal({ qc, currentEmployee, onClose, onApprove, onReject }: QC
 
 // ─── Main Component ───────────────────────────────────────────
 export function QualityControl() {
-  const [checks,          setChecks]          = useState<QualityCheck[]>([]);
-  const [jobs,            setJobs]            = useState<QCJob[]>([]);
-  const [stats,           setStats]           = useState<QCStats>({
+  const [checks, setChecks] = useState<QualityCheck[]>([]);
+  const [jobs, setJobs] = useState<QCJob[]>([]);
+  const [stats, setStats] = useState<QCStats>({
     pending: 0, passed: 0, failed: 0, rework: 0, approvalRate: 0, awaitingApproval: 0,
   });
   const [currentEmployee, setCurrentEmployee] = useState<CurrentEmployee | null>(null);
-  const [loading,         setLoading]         = useState(true);
-  const [error,           setError]           = useState<string | null>(null);
-  const [search,          setSearch]          = useState("");
-  const [statusFilter,    setStatusFilter]    = useState<string>("All");
-  const [showNewModal,    setShowNewModal]    = useState(false);
-  const [selectedQC,      setSelectedQC]      = useState<QualityCheck | null>(null);
-  const [preSelectedPO,   setPreSelectedPO]   = useState<string>("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("All");
+  const [showNewModal, setShowNewModal] = useState(false);
+  const [selectedQC, setSelectedQC] = useState<QualityCheck | null>(null);
+  const [preSelectedPO, setPreSelectedPO] = useState<string>("");
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -1187,9 +1174,9 @@ export function QualityControl() {
         api.getCurrentEmployee(),
       ]);
       if (checksData.status === "fulfilled") setChecks(checksData.value);
-      if (jobsData.status   === "fulfilled") setJobs(jobsData.value);
-      if (statsData.status  === "fulfilled") setStats(statsData.value);
-      if (empData.status    === "fulfilled") setCurrentEmployee(empData.value);
+      if (jobsData.status === "fulfilled") setJobs(jobsData.value);
+      if (statsData.status === "fulfilled") setStats(statsData.value);
+      if (empData.status === "fulfilled") setCurrentEmployee(empData.value);
     } catch {
       setError("Failed to load QC data");
     } finally {
@@ -1204,19 +1191,19 @@ export function QualityControl() {
     const channel = supabase
       .channel("qc_realtime")
       .on("postgres_changes", {
-        event:  "*",
+        event: "*",
         schema: "public",
-        table:  "quality_checks",
+        table: "quality_checks",
       }, () => { loadData(); })
       .on("postgres_changes", {
-        event:  "UPDATE",
+        event: "UPDATE",
         schema: "public",
-        table:  "production_orders",
+        table: "production_orders",
       }, () => { loadData(); })
       .on("postgres_changes", {
-        event:  "UPDATE",
+        event: "UPDATE",
         schema: "public",
-        table:  "sample_orders",
+        table: "sample_orders",
       }, () => { loadData(); })
       .subscribe();
 
@@ -1229,6 +1216,7 @@ export function QualityControl() {
   };
 
   const handleApprove = async (id: number, notes?: string, checklist?: PostDevChecklist) => {
+    // Save the full checklist including carton_type
     await api.approveQualityCheck(id, notes, checklist);
     await loadData();
   };
@@ -1248,8 +1236,8 @@ export function QualityControl() {
     const matchesSearch =
       search === "" ||
       (qc.sample_order_id || qc.production_order_id || "").toLowerCase().includes(s) ||
-      (qc.customer_name   || "").toLowerCase().includes(s) ||
-      (qc.product_name    || "").toLowerCase().includes(s);
+      (qc.customer_name || "").toLowerCase().includes(s) ||
+      (qc.product_name || "").toLowerCase().includes(s);
 
     let matchStatus = true;
     if (statusFilter === "Awaiting Approval") {
@@ -1262,8 +1250,8 @@ export function QualityControl() {
     return matchesSearch && matchStatus;
   });
 
-  const userRole       = currentEmployee?.role || "";
-  const hasSubmitPerm  = canSubmitQC(userRole);
+  const userRole = currentEmployee?.role || "";
+  const hasSubmitPerm = canSubmitQC(userRole);
   const hasApprovePerm = canApproveQC(userRole);
 
   const pendingJobs = jobs.filter((j) => j.status === "QC Pending" && !j.hasActiveQC);
@@ -1347,13 +1335,12 @@ export function QualityControl() {
 
       {/* Role Banner */}
       {currentEmployee && (
-        <div className={`flex items-center gap-3 px-4 py-3 rounded-xl border text-xs ${
-          hasApprovePerm
+        <div className={`flex items-center gap-3 px-4 py-3 rounded-xl border text-xs ${hasApprovePerm
             ? "bg-purple-50 border-purple-200 text-purple-800"
             : hasSubmitPerm
-            ? "bg-blue-50 border-blue-200 text-blue-800"
-            : "bg-slate-50 border-slate-200 text-slate-700"
-        }`}>
+              ? "bg-blue-50 border-blue-200 text-blue-800"
+              : "bg-slate-50 border-slate-200 text-slate-700"
+          }`}>
           <ShieldCheck size={14} className="flex-shrink-0" />
           <div>
             <span className="font-semibold">{currentEmployee.full_name}</span>
@@ -1363,8 +1350,8 @@ export function QualityControl() {
             {hasApprovePerm
               ? "You can submit QC reports AND approve / reject them."
               : hasSubmitPerm
-              ? "You can submit QC reports. A Supervisor or Admin will approve."
-              : "You have view-only access to QC records."}
+                ? "You can submit QC reports. A Supervisor or Admin will approve."
+                : "You have view-only access to QC records."}
           </div>
         </div>
       )}
@@ -1372,12 +1359,12 @@ export function QualityControl() {
       {/* KPI Cards */}
       <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
         {[
-          { label: "Pending Inspection", value: stats.pending,          icon: <Clock size={15} />,       color: "text-amber-600 bg-amber-50",   border: "border-amber-100"  },
-          { label: "Awaiting Approval",  value: stats.awaitingApproval, icon: <ShieldCheck size={15} />, color: "text-blue-600 bg-blue-50",     border: "border-blue-100"   },
-          { label: "Approved (MTD)",     value: stats.passed,           icon: <CheckCircle size={15} />, color: "text-green-600 bg-green-50",   border: "border-green-100"  },
-          { label: "Failed (MTD)",       value: stats.failed,           icon: <XCircle size={15} />,     color: "text-red-600 bg-red-50",       border: "border-red-100"    },
-          { label: "Rework Required",    value: stats.rework,           icon: <RotateCcw size={15} />,   color: "text-orange-600 bg-orange-50", border: "border-orange-100" },
-          { label: "Approval Rate",      value: `${stats.approvalRate}%`, icon: <ShieldCheck size={15} />, color: "text-indigo-600 bg-indigo-50", border: "border-indigo-100" },
+          { label: "Pending Inspection", value: stats.pending, icon: <Clock size={15} />, color: "text-amber-600 bg-amber-50", border: "border-amber-100" },
+          { label: "Awaiting Approval", value: stats.awaitingApproval, icon: <ShieldCheck size={15} />, color: "text-blue-600 bg-blue-50", border: "border-blue-100" },
+          { label: "Approved (MTD)", value: stats.passed, icon: <CheckCircle size={15} />, color: "text-green-600 bg-green-50", border: "border-green-100" },
+          { label: "Failed (MTD)", value: stats.failed, icon: <XCircle size={15} />, color: "text-red-600 bg-red-50", border: "border-red-100" },
+          { label: "Rework Required", value: stats.rework, icon: <RotateCcw size={15} />, color: "text-orange-600 bg-orange-50", border: "border-orange-100" },
+          { label: "Approval Rate", value: `${stats.approvalRate}%`, icon: <ShieldCheck size={15} />, color: "text-indigo-600 bg-indigo-50", border: "border-indigo-100" },
         ].map((s) => (
           <div key={s.label} className={`bg-white rounded-xl border ${s.border} p-4 shadow-sm`}>
             <div className={`w-8 h-8 rounded-lg flex items-center justify-center mb-3 ${s.color}`}>
@@ -1529,11 +1516,10 @@ export function QualityControl() {
                 <button
                   key={s}
                   onClick={() => setStatusFilter(s)}
-                  className={`px-2.5 py-1 text-xs rounded-lg border transition-colors ${
-                    statusFilter === s
+                  className={`px-2.5 py-1 text-xs rounded-lg border transition-colors ${statusFilter === s
                       ? "bg-indigo-600 text-white border-indigo-600"
                       : "bg-white text-slate-600 border-slate-200 hover:border-slate-300"
-                  }`}
+                    }`}
                 >
                   {s}
                 </button>
@@ -1595,11 +1581,10 @@ export function QualityControl() {
                       <span className="text-indigo-600 text-xs font-bold">#{qc.qc_id}</span>
                     </td>
                     <td className="px-4 py-3">
-                      <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${
-                        qc.qc_cycle > 1
+                      <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${qc.qc_cycle > 1
                           ? "bg-orange-100 text-orange-700"
                           : "bg-slate-100 text-slate-500"
-                      }`}>
+                        }`}>
                         {qc.qc_cycle}
                       </span>
                     </td>
@@ -1641,8 +1626,8 @@ export function QualityControl() {
                     <td className="px-4 py-3">
                       <StatusBadge status={
                         qc.approved_for_dispatch ? "Approved" :
-                        qc.overall_status === "Passed" ? "Awaiting Approval" :
-                        qc.overall_status
+                          qc.overall_status === "Passed" ? "Awaiting Approval" :
+                            qc.overall_status
                       } />
                     </td>
                     <td className="px-4 py-3">

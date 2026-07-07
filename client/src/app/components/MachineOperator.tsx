@@ -173,52 +173,6 @@ function FactorySlipModal({ job, onClose, onSave }: FactorySlipModalProps) {
     loadSlipData();
   }, [job]);
 
-  const handleSave = async () => {
-    if (!slipData.supervisor.trim()) {
-      alert('Please enter supervisor name');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const { error } = await supabase
-        .from('factory_slips')
-        .upsert({
-          job_id: job.id,
-          job_type: job.type,
-          job_name: slipData.jobName,
-          customer: slipData.customer,
-          copies: slipData.copies,
-          job_size: slipData.jobSize,
-          colors: slipData.colors,
-          slip_date: slipData.date,
-          slip_number: slipData.slipNumber,
-          machine_man: slipData.machineMan,
-          supervisor: slipData.supervisor,
-          paper_name: slipData.paperName,
-          paper_quantity: slipData.paperQuantity,
-          additional_sheets: slipData.additionalSheets,
-          board_sheets: slipData.boardSheets,
-          cover_paper: slipData.coverPaper,
-          remarks: slipData.remarks,
-          updated_at: new Date().toISOString(),
-        }, {
-          onConflict: 'job_id,job_type'
-        });
-
-      if (error) throw error;
-
-      alert('✅ Factory Slip saved successfully!');
-      onSave();
-      onClose();
-    } catch (error) {
-      console.error('Error saving factory slip:', error);
-      alert('Failed to save factory slip. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handlePrint = () => {
     window.print();
   };
@@ -233,7 +187,10 @@ function FactorySlipModal({ job, onClose, onSave }: FactorySlipModalProps) {
               <Printer size={20} className="text-indigo-600" />
               Factory Slip - {job.id}
             </h3>
-            <p className="text-xs text-slate-500 mt-0.5">Auto-filled fields are locked. Supervisor fills paper details.</p>
+            <p className="text-xs text-slate-500 mt-0.5">
+              <span className="text-amber-600 font-medium">📋 Read Only</span> —
+              Machine Operator can view and print only. Supervisor fills the details.
+            </p>
           </div>
           <button onClick={onClose} className="p-1.5 text-slate-400 hover:text-slate-600">
             <X size={20} />
@@ -271,15 +228,15 @@ function FactorySlipModal({ job, onClose, onSave }: FactorySlipModalProps) {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div>
               <label className="block text-xs text-slate-500 mb-0.5">Job Size</label>
-              <input type="text" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm" value={slipData.jobSize} onChange={e => setSlipData({ ...slipData, jobSize: e.target.value })} placeholder="e.g. 15x20" />
+              <input type="text" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm" value={slipData.jobSize} readOnly />
             </div>
             <div>
               <label className="block text-xs text-slate-500 mb-0.5">Colors</label>
-              <input type="text" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm" value={slipData.colors} onChange={e => setSlipData({ ...slipData, colors: e.target.value })} placeholder="e.g. 4+0" />
+              <input type="text" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm" value={slipData.colors} readOnly />
             </div>
             <div>
               <label className="block text-xs text-slate-500 mb-0.5">Date</label>
-              <input type="date" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm" value={slipData.date} onChange={e => setSlipData({ ...slipData, date: e.target.value })} />
+              <input type="date" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm" value={slipData.date} readOnly />
             </div>
             <div>
               <label className="block text-xs text-slate-500 mb-0.5">Machine Man</label>
@@ -287,43 +244,43 @@ function FactorySlipModal({ job, onClose, onSave }: FactorySlipModalProps) {
             </div>
           </div>
 
-          {/* Supervisor Fills */}
+          {/* Supervisor Section - Read Only */}
           <div className="border-t-2 border-dashed border-amber-300 pt-4">
             <div className="flex items-center gap-2 mb-4">
               <span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded text-xs font-bold">SUPERVISOR SECTION</span>
-              <span className="text-xs text-slate-400">— Fill the fields below</span>
+              <span className="text-xs text-slate-400">— Read Only (View Only)</span>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-0.5">Supervisor Name *</label>
-                <input type="text" className="w-full px-3 py-2 border-2 border-amber-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500" value={slipData.supervisor} onChange={e => setSlipData({ ...slipData, supervisor: e.target.value })} placeholder="Enter supervisor name" />
+                <label className="block text-xs font-semibold text-slate-700 mb-0.5">Supervisor Name</label>
+                <input type="text" className="w-full px-3 py-2 bg-slate-100 border border-slate-200 rounded-lg text-sm text-slate-700" value={slipData.supervisor || '—'} readOnly />
               </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-0.5">Paper Name</label>
-                <input type="text" className="w-full px-3 py-2 border-2 border-amber-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500" value={slipData.paperName} onChange={e => setSlipData({ ...slipData, paperName: e.target.value })} placeholder="e.g. Art Card 300 GSM" />
+                <input type="text" className="w-full px-3 py-2 bg-slate-100 border border-slate-200 rounded-lg text-sm text-slate-700" value={slipData.paperName || '—'} readOnly />
               </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-0.5">Paper Quantity</label>
-                <input type="number" className="w-full px-3 py-2 border-2 border-amber-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500" value={slipData.paperQuantity || ''} onChange={e => setSlipData({ ...slipData, paperQuantity: Number(e.target.value) })} placeholder="Total sheets" />
+                <input type="number" className="w-full px-3 py-2 bg-slate-100 border border-slate-200 rounded-lg text-sm text-slate-700" value={slipData.paperQuantity || 0} readOnly />
               </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-0.5">Additional Sheets</label>
-                <input type="number" className="w-full px-3 py-2 border-2 border-amber-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500" value={slipData.additionalSheets || ''} onChange={e => setSlipData({ ...slipData, additionalSheets: Number(e.target.value) })} placeholder="Extra sheets" />
+                <input type="number" className="w-full px-3 py-2 bg-slate-100 border border-slate-200 rounded-lg text-sm text-slate-700" value={slipData.additionalSheets || 0} readOnly />
               </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-0.5">Board Sheets</label>
-                <input type="number" className="w-full px-3 py-2 border-2 border-amber-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500" value={slipData.boardSheets || ''} onChange={e => setSlipData({ ...slipData, boardSheets: Number(e.target.value) })} placeholder="Board sheets" />
+                <input type="number" className="w-full px-3 py-2 bg-slate-100 border border-slate-200 rounded-lg text-sm text-slate-700" value={slipData.boardSheets || 0} readOnly />
               </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-0.5">Cover Paper</label>
-                <input type="text" className="w-full px-3 py-2 border-2 border-amber-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500" value={slipData.coverPaper} onChange={e => setSlipData({ ...slipData, coverPaper: e.target.value })} placeholder="e.g. Cover 200 GSM" />
+                <input type="text" className="w-full px-3 py-2 bg-slate-100 border border-slate-200 rounded-lg text-sm text-slate-700" value={slipData.coverPaper || '—'} readOnly />
               </div>
             </div>
 
             <div className="mt-4">
               <label className="block text-xs font-semibold text-slate-700 mb-0.5">Remarks</label>
-              <textarea rows={2} className="w-full px-3 py-2 border-2 border-amber-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500" value={slipData.remarks} onChange={e => setSlipData({ ...slipData, remarks: e.target.value })} placeholder="Any special instructions..." />
+              <textarea rows={2} className="w-full px-3 py-2 bg-slate-100 border border-slate-200 rounded-lg text-sm text-slate-700" value={slipData.remarks || '—'} readOnly />
             </div>
           </div>
 
@@ -334,13 +291,13 @@ function FactorySlipModal({ job, onClose, onSave }: FactorySlipModalProps) {
           </div>
         </div>
 
-        {/* Actions */}
+        {/* Actions - Only Print and Close, NO SAVE button */}
         <div className="px-6 py-4 border-t border-slate-200 bg-slate-50 rounded-b-xl flex justify-end gap-3">
           <button
             onClick={onClose}
             className="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
           >
-            Cancel
+            Close
           </button>
           <button
             onClick={handlePrint}
@@ -348,28 +305,11 @@ function FactorySlipModal({ job, onClose, onSave }: FactorySlipModalProps) {
           >
             <Printer size={16} /> Print Factory Slip
           </button>
-          <button
-            onClick={handleSave}
-            disabled={loading || !slipData.supervisor.trim()}
-            className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-          >
-            {loading ? (
-              <>
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                Saving...
-              </>
-            ) : (
-              <>
-                <Save size={16} /> Save Factory Slip
-              </>
-            )}
-          </button>
         </div>
       </div>
     </div>
   );
 }
-
 // ============================================================
 // QC REPORT MODAL
 // ============================================================

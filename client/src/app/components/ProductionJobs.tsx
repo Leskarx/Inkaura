@@ -1,14 +1,14 @@
 import { useState, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { QuotationViewModal } from "../components/QuotationViewModal";
+import { JobSlipModal } from "../components/JobSlipModal";
 import {
     Search, Calendar, User, Clock, AlertCircle, CheckCircle, Truck,
     Package, Settings, Eye, RefreshCw, AlertTriangle,
     Plus, Edit, Save, X as CloseIcon, ArrowRight, Factory, Users,
-    ClipboardCheck, Play
+    ClipboardCheck, Play, Printer
 } from "lucide-react";
-import { api, ProductionJob, ProductionStatus, Priority } from "../server/api";
-import { supabase } from "../server/api";
+import { api, ProductionJob, ProductionStatus, Priority, supabase } from "../server/api";
 
 const statusConfig: Record<ProductionStatus, { label: string; bg: string; text: string; border: string; icon: React.ReactNode }> = {
     "Pending": {
@@ -46,6 +46,27 @@ const statusConfig: Record<ProductionStatus, { label: string; bg: string; text: 
         border: "border-purple-200",
         icon: <Truck size={12} />
     },
+    "Packaged": {
+        label: "Packaged",
+        bg: "bg-emerald-50",
+        text: "text-emerald-700",
+        border: "border-emerald-200",
+        icon: <Package size={12} />
+    },
+    "Rework Required": {
+        label: "Rework Required",
+        bg: "bg-red-50",
+        text: "text-red-700",
+        border: "border-red-200",
+        icon: <AlertTriangle size={12} />
+    },
+    "Failed": {
+        label: "Failed",
+        bg: "bg-red-50",
+        text: "text-red-700",
+        border: "border-red-200",
+        icon: <AlertCircle size={12} />
+    },
 };
 
 const priorityColors: Record<Priority, string> = {
@@ -60,6 +81,9 @@ const progressColors: Record<ProductionStatus, string> = {
     "QC Pending": "bg-amber-500",
     "Completed": "bg-green-500",
     "Dispatched": "bg-purple-500",
+    "Packaged": "bg-emerald-500",
+    "Rework Required": "bg-red-500",
+    "Failed": "bg-red-500",
 };
 
 export function ProductionJobs() {
@@ -79,6 +103,10 @@ export function ProductionJobs() {
     // State for Quotation View Modal
     const [showQuotationView, setShowQuotationView] = useState(false);
     const [viewQuotationId, setViewQuotationId] = useState<string | null>(null);
+
+    // State for Job Slip Modal
+    const [showJobSlip, setShowJobSlip] = useState(false);
+    const [jobSlipJob, setJobSlipJob] = useState<ProductionJob | null>(null);
 
     // Assignment form state
     const [assignmentData, setAssignmentData] = useState({
@@ -235,6 +263,9 @@ export function ProductionJobs() {
             "QC Pending": "Completed",
             "Completed": null, // No more actions - dispatch handles it
             "Dispatched": null,
+            "Packaged": null,
+            "Rework Required": null,
+            "Failed": null,
         };
         return workflow[currentStatus];
     };
@@ -246,6 +277,9 @@ export function ProductionJobs() {
             "QC Pending": "Complete QC",
             "Completed": "Ready for Dispatch",
             "Dispatched": "Dispatched ✓",
+            "Packaged": "Packaged ✓",
+            "Rework Required": "Rework Required",
+            "Failed": "Failed",
         };
         return labels[status];
     };
@@ -370,7 +404,7 @@ export function ProductionJobs() {
             ) : viewMode === "card" ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                     {filtered.map((job) => {
-                        const conf = statusConfig[job.status];
+                        const conf = statusConfig[job.status] || statusConfig["Pending"];
                         const isPending = job.status === "Pending";
                         const statusText = isPending ? "Pending Assignment" : conf.label;
                         const nextStatus = getNextStatus(job.status);
@@ -403,7 +437,7 @@ export function ProductionJobs() {
                                 </div>
                                 <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden mb-4">
                                     <div
-                                        className={`h-full rounded-full transition-all ${progressColors[job.status]}`}
+                                        className={`h-full rounded-full transition-all ${progressColors[job.status] || "bg-slate-300"}`}
                                         style={{ width: `${job.progress}%` }}
                                     />
                                 </div>
@@ -444,7 +478,7 @@ export function ProductionJobs() {
                                         </button>
                                     )}
 
-                                    {canProgress && isAssigned && !isQCPending && (
+                                    {canProgress && isAssigned && !isQCPending && job.status !== "Completed" && (
                                         <button
                                             onClick={() => handleStatusUpdate(job.id, nextStatus)}
                                             disabled={updating}
@@ -486,6 +520,18 @@ export function ProductionJobs() {
                                         <Eye size={12} /> View Quote
                                     </button>
 
+                                    {/* Job Slip Button */}
+                                    <button
+                                        onClick={() => {
+                                            setJobSlipJob(job);
+                                            setShowJobSlip(true);
+                                        }}
+                                        className="flex items-center justify-center gap-1 px-3 py-1.5 text-xs bg-slate-900 text-white rounded-lg hover:bg-slate-700 transition-colors font-medium"
+                                        title="Print Factory Job Slip"
+                                    >
+                                        <Printer size={12} /> Job Slip
+                                    </button>
+
                                     <button
                                         onClick={() => {
                                             setSelectedJob(job);
@@ -514,7 +560,7 @@ export function ProductionJobs() {
                             </thead>
                             <tbody>
                                 {filtered.map((job) => {
-                                    const conf = statusConfig[job.status];
+                                    const conf = statusConfig[job.status] || statusConfig["Pending"];
                                     const nextStatus = getNextStatus(job.status);
                                     const canProgress = nextStatus !== null;
                                     const isAssigned = isJobAssigned(job);
@@ -540,7 +586,7 @@ export function ProductionJobs() {
                                             <td className="px-4 py-3">
                                                 <div className="flex items-center gap-2">
                                                     <div className="w-16 h-1.5 rounded-full bg-slate-100 overflow-hidden">
-                                                        <div className={`h-full rounded-full ${progressColors[job.status]}`} style={{ width: `${job.progress}%` }} />
+                                                        <div className={`h-full rounded-full ${progressColors[job.status] || "bg-slate-300"}`} style={{ width: `${job.progress}%` }} />
                                                     </div>
                                                     <span className="text-xs text-slate-600 font-semibold">{job.progress}%</span>
                                                 </div>
@@ -557,7 +603,7 @@ export function ProductionJobs() {
                                                             Assign
                                                         </button>
                                                     )}
-                                                    {canProgress && isAssigned && !isQCPending && (
+                                                    {canProgress && isAssigned && !isQCPending && job.status !== "Completed" && (
                                                         <button
                                                             onClick={() => handleStatusUpdate(job.id, nextStatus)}
                                                             disabled={updating}
@@ -588,6 +634,17 @@ export function ProductionJobs() {
                                                         className="px-2 py-1 text-xs bg-indigo-50 text-indigo-600 rounded hover:bg-indigo-100 transition-colors"
                                                     >
                                                         <Eye size={12} />
+                                                    </button>
+                                                    {/* Job Slip Button in Table */}
+                                                    <button
+                                                        onClick={() => {
+                                                            setJobSlipJob(job);
+                                                            setShowJobSlip(true);
+                                                        }}
+                                                        className="px-2 py-1 text-xs bg-slate-900 text-white rounded hover:bg-slate-700 transition-colors"
+                                                        title="Print Factory Job Slip"
+                                                    >
+                                                        <Printer size={12} />
                                                     </button>
                                                     <button
                                                         onClick={() => {
@@ -788,6 +845,25 @@ export function ProductionJobs() {
                     onClose={() => {
                         setShowQuotationView(false);
                         setViewQuotationId(null);
+                    }}
+                />
+            )}
+
+            {/* Job Slip Modal */}
+            {showJobSlip && jobSlipJob && (
+                <JobSlipModal
+                    jobId={jobSlipJob.id}
+                    jobType="production"
+                    quotationId={jobSlipJob.quotationId}
+                    customerName={jobSlipJob.customer}
+                    productName={jobSlipJob.product}
+                    quantity={jobSlipJob.quantity}
+                    dueDate={jobSlipJob.dueDate}
+                    machineName={jobSlipJob.machine}
+                    operatorName={jobSlipJob.assignedTo}
+                    onClose={() => {
+                        setShowJobSlip(false);
+                        setJobSlipJob(null);
                     }}
                 />
             )}

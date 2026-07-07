@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { api } from "../server/api";
+import { api, supabase } from "../server/api";
 import {
   Plus, Trash2, Save, AlertCircle, FileText,
   ChevronRight, Box, Package, FileUp, Info, Search, ChevronDown, X
@@ -12,6 +12,7 @@ export function EditQuotationPage() {
   const [loading, setLoading] = useState(false);
   const [customers, setCustomers] = useState<{ id: string, name: string, contact_person: string }[]>([]);
   const [employees, setEmployees] = useState<{ id: number, name: string }[]>([]);
+  const [supervisors, setSupervisors] = useState<{ id: number, name: string, role: string }[]>([]);
   const [customerSearch, setCustomerSearch] = useState("");
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
 
@@ -26,6 +27,11 @@ export function EditQuotationPage() {
   });
 
   // 3. Products - Store original IDs for update
+  // NOTE: previously this type was missing every "Factory Slip" field
+  // (supervisor_to, job_size, inside_pages, inside_colors, etc.) even
+  // though the initial state, handleAddProduct, the JSX, and handleSave
+  // all read/wrote those fields. That's an excess-property / missing-property
+  // mismatch that breaks TypeScript compilation. Fixed by declaring them here.
   const [products, setProducts] = useState<Array<{
     id: number; // frontend temporary id
     quotation_product_id?: number; // actual DB id for updates
@@ -55,6 +61,28 @@ export function EditQuotationPage() {
     cartons: number;
     special_instructions: string;
     _frontend_price: number;
+    // Factory Slip Fields
+    supervisor_to: string;
+    machine_man_to: string;
+    job_size: string;
+    inside_pages: number;
+    copies: number;
+    total_forms: number;
+    polymaster_plates: number;
+    plate_size: string;
+    inside_colors: number;
+    inside_color_names: string;
+    cover_colors: number;
+    cover_color_names: string;
+    inside_paper_name: string;
+    inside_total_sheets: number;
+    inside_additional_sheets: number;
+    cover_paper_name: string;
+    cover_total_sheets: number;
+    cover_additional_sheets: number;
+    boards_sheets: number;
+    cover_paper_sheets: number;
+    post_press_notes: string;
   }>>([{
     id: 1,
     product_name: "",
@@ -82,7 +110,14 @@ export function EditQuotationPage() {
     packaging_type: "",
     cartons: 0,
     special_instructions: "",
-    _frontend_price: 0
+    _frontend_price: 0,
+    // Factory Slip Fields
+    supervisor_to: "", machine_man_to: "",
+    job_size: "", inside_pages: 0, copies: 0, total_forms: 0, polymaster_plates: 0, plate_size: "",
+    inside_colors: 4, inside_color_names: "", cover_colors: 0, cover_color_names: "",
+    inside_paper_name: "", inside_total_sheets: 0, inside_additional_sheets: 0,
+    cover_paper_name: "", cover_total_sheets: 0, cover_additional_sheets: 0,
+    boards_sheets: 0, cover_paper_sheets: 0, post_press_notes: "",
   }]);
 
   // 2. Commercial Details (Auto-calculated mostly)
@@ -150,6 +185,9 @@ export function EditQuotationPage() {
         ]);
         setCustomers(c.map(x => ({ id: x.id, name: x.name, contact_person: (x as any).contact_person || "" })));
         setEmployees(e.map(x => ({ id: Number(x.id), name: x.name })));
+        setSupervisors(e.filter(x =>
+          ["Supervisor", "SUPERVISOR", "Admin", "ADMIN"].includes(x.role)
+        ).map(x => ({ id: Number(x.id), name: x.name, role: x.role })));
 
         if (id) {
           const q = await api.getQuotationForEdit(id);
@@ -194,7 +232,28 @@ export function EditQuotationPage() {
                 special_instructions: p.special_instructions || "",
                 _frontend_price: q.total_payment && q.quotation_products.length > 0
                   ? Number(q.total_payment) / q.quotation_products.length
-                  : 0
+                  : 0,
+                supervisor_to: p.supervisor_to || "",
+                machine_man_to: p.machine_man_to || "",
+                job_size: p.job_size || "",
+                inside_pages: p.inside_pages || 0,
+                copies: p.copies || p.production_quantity || 0,
+                total_forms: p.total_forms || 0,
+                polymaster_plates: p.polymaster_plates || 0,
+                plate_size: p.plate_size || "",
+                inside_colors: p.inside_colors || p.front_colors || 4,
+                inside_color_names: p.inside_color_names || "",
+                cover_colors: p.cover_colors || p.back_colors || 0,
+                cover_color_names: p.cover_color_names || "",
+                inside_paper_name: p.inside_paper_name || p.paper_type || "",
+                inside_total_sheets: p.inside_total_sheets || 0,
+                inside_additional_sheets: p.inside_additional_sheets || 0,
+                cover_paper_name: p.cover_paper_name || "",
+                cover_total_sheets: p.cover_total_sheets || 0,
+                cover_additional_sheets: p.cover_additional_sheets || 0,
+                boards_sheets: p.boards_sheets || 0,
+                cover_paper_sheets: p.cover_paper_sheets || 0,
+                post_press_notes: p.post_press_notes || p.special_instructions || "",
               })));
             }
 
@@ -270,7 +329,15 @@ export function EditQuotationPage() {
       packaging_type: "",
       cartons: 0,
       special_instructions: "",
-      _frontend_price: 0
+      _frontend_price: 0,
+      // Factory Slip Fields (previously missing here, so newly added
+      // product rows silently lost all Factory Slip data)
+      supervisor_to: "", machine_man_to: "",
+      job_size: "", inside_pages: 0, copies: 0, total_forms: 0, polymaster_plates: 0, plate_size: "",
+      inside_colors: 4, inside_color_names: "", cover_colors: 0, cover_color_names: "",
+      inside_paper_name: "", inside_total_sheets: 0, inside_additional_sheets: 0,
+      cover_paper_name: "", cover_total_sheets: 0, cover_additional_sheets: 0,
+      boards_sheets: 0, cover_paper_sheets: 0, post_press_notes: "",
     }]);
   };
 
@@ -344,6 +411,27 @@ export function EditQuotationPage() {
           packaging_type: p.packaging_type || '',
           cartons: p.cartons || 0,
           special_instructions: p.special_instructions || '',
+          supervisor_to: p.supervisor_to || '',
+          machine_man_to: p.machine_man_to || '',
+          job_size: p.job_size || '',
+          inside_pages: p.inside_pages || 0,
+          copies: p.copies || p.production_quantity || 0,
+          total_forms: p.total_forms || 0,
+          polymaster_plates: p.polymaster_plates || 0,
+          plate_size: p.plate_size || '',
+          inside_colors: p.inside_colors || p.front_colors || 4,
+          inside_color_names: p.inside_color_names || '',
+          cover_colors: p.cover_colors || p.back_colors || 0,
+          cover_color_names: p.cover_color_names || '',
+          inside_paper_name: p.inside_paper_name || p.paper_type || '',
+          inside_total_sheets: p.inside_total_sheets || 0,
+          inside_additional_sheets: p.inside_additional_sheets || 0,
+          cover_paper_name: p.cover_paper_name || '',
+          cover_total_sheets: p.cover_total_sheets || 0,
+          cover_additional_sheets: p.cover_additional_sheets || 0,
+          boards_sheets: p.boards_sheets || 0,
+          cover_paper_sheets: p.cover_paper_sheets || 0,
+          post_press_notes: p.post_press_notes || p.special_instructions || '',
         }));
 
         const { error: productError } = await supabase
@@ -553,7 +641,118 @@ export function EditQuotationPage() {
                   <label className="flex items-center gap-2"><input type="checkbox" checked={p.foiling} onChange={e => setProducts(products.map(x => x.id === p.id ? { ...x, foiling: e.target.checked } : x))} /> Foiling</label>
                   <label className="flex items-center gap-2"><input type="checkbox" checked={p.die_cutting} onChange={e => setProducts(products.map(x => x.id === p.id ? { ...x, die_cutting: e.target.checked } : x))} /> Die Cutting</label>
                 </div>
-                <input type="text" placeholder="Packaging Type" className="w-full p-2 border border-slate-200 rounded-lg text-sm" value={p.packaging_type} onChange={e => setProducts(products.map(x => x.id === p.id ? { ...x, packaging_type: e.target.value } : x))} />
+
+                {/* Packaging / Carton Type chips */}
+                <div className="pt-1">
+                  <p className="text-xs font-bold text-slate-600 mb-0.5">Packaging / Carton Type</p>
+                  <p className="text-[10px] text-slate-400 mb-2">RTI · STI · CLB · SLB · Tray · Sleeve · Pouch · Custom</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {["RTI", "STI", "CLB", "SLB", "Tray", "Sleeve", "Pouch", "Folding Carton", "Rigid Box", "Corrugated Box"].map(type => (
+                      <button
+                        key={type}
+                        type="button"
+                        onClick={() => setProducts(products.map(x => x.id === p.id ? { ...x, packaging_type: x.packaging_type === type ? "" : type } : x))}
+                        className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-all ${p.packaging_type === type
+                            ? "bg-slate-900 text-white border-slate-900 shadow-sm"
+                            : "bg-white text-slate-600 border-slate-300 hover:border-slate-400 hover:bg-slate-50"
+                          }`}
+                      >
+                        {type}
+                      </button>
+                    ))}
+                  </div>
+                  {p.packaging_type && (
+                    <p className="text-xs text-indigo-600 font-medium mt-1.5">Selected: {p.packaging_type}</p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+
+            {/* ── Factory Slip Details ─────────────────────────────── */}
+            <div className="border-t-2 border-dashed border-orange-200 mt-2 p-6 pt-5 bg-gradient-to-br from-orange-50/60 to-indigo-50/40">
+              <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-4 flex items-center gap-2">
+                <span className="px-2 py-1 bg-slate-900 text-white rounded text-[10px] font-bold tracking-widest">FACTORY SLIP</span>
+                <span className="text-slate-500 font-normal normal-case tracking-normal text-xs">— fills the Paper Issue Slip &amp; Job Details form</span>
+              </h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3">
+                {/* Paper Issue Slip */}
+                <div className="space-y-3">
+                  <h5 className="text-[10px] font-bold text-orange-600 uppercase tracking-widest border-b border-orange-200 pb-1">📋 Paper Issue Slip (Supervisor)</h5>
+                  <div><label className="block text-xs font-semibold text-slate-600 mb-1">Supervisor Name <span className="text-red-500">*</span></label>
+                    <select
+                      className="w-full p-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400/20 focus:border-orange-400"
+                      value={p.supervisor_to || ""}
+                      onChange={e => setProducts(products.map(x => x.id === p.id ? { ...x, supervisor_to: e.target.value } : x))}
+                    >
+                      <option value="">— Select Supervisor —</option>
+                      {supervisors.map(s => (
+                        <option key={s.id} value={s.name}>{s.name} ({s.role})</option>
+                      ))}
+                    </select></div>
+                  <div><label className="block text-xs font-semibold text-slate-600 mb-1">Name of Inside Used Paper</label>
+                    <input type="text" placeholder="e.g. ITC ECO Breeze 380 GSM" className="w-full p-2 border border-slate-200 rounded-lg text-sm" value={p.inside_paper_name || ""} onChange={e => setProducts(products.map(x => x.id === p.id ? { ...x, inside_paper_name: e.target.value } : x))} /></div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div><label className="block text-xs font-semibold text-slate-600 mb-1">Total Sheets (Inside)</label>
+                      <input type="number" className="w-full p-2 border border-slate-200 rounded-lg text-sm" value={p.inside_total_sheets || ""} onChange={e => setProducts(products.map(x => x.id === p.id ? { ...x, inside_total_sheets: Number(e.target.value) } : x))} /></div>
+                    <div><label className="block text-xs font-semibold text-slate-600 mb-1">Additional</label>
+                      <input type="number" className="w-full p-2 border border-slate-200 rounded-lg text-sm" value={p.inside_additional_sheets || ""} onChange={e => setProducts(products.map(x => x.id === p.id ? { ...x, inside_additional_sheets: Number(e.target.value) } : x))} /></div>
+                  </div>
+                  <div><label className="block text-xs font-semibold text-slate-600 mb-1">Name of Cover Paper</label>
+                    <input type="text" placeholder="e.g. Art Card 300 GSM" className="w-full p-2 border border-slate-200 rounded-lg text-sm" value={p.cover_paper_name || ""} onChange={e => setProducts(products.map(x => x.id === p.id ? { ...x, cover_paper_name: e.target.value } : x))} /></div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div><label className="block text-xs font-semibold text-slate-600 mb-1">Total Sheets (Cover)</label>
+                      <input type="number" className="w-full p-2 border border-slate-200 rounded-lg text-sm" value={p.cover_total_sheets || ""} onChange={e => setProducts(products.map(x => x.id === p.id ? { ...x, cover_total_sheets: Number(e.target.value) } : x))} /></div>
+                    <div><label className="block text-xs font-semibold text-slate-600 mb-1">Additional</label>
+                      <input type="number" className="w-full p-2 border border-slate-200 rounded-lg text-sm" value={p.cover_additional_sheets || ""} onChange={e => setProducts(products.map(x => x.id === p.id ? { ...x, cover_additional_sheets: Number(e.target.value) } : x))} /></div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div><label className="block text-xs font-semibold text-slate-600 mb-1">Boards Sheets</label>
+                      <input type="number" className="w-full p-2 border border-slate-200 rounded-lg text-sm" value={p.boards_sheets || ""} onChange={e => setProducts(products.map(x => x.id === p.id ? { ...x, boards_sheets: Number(e.target.value) } : x))} /></div>
+                    <div><label className="block text-xs font-semibold text-slate-600 mb-1">Cover Paper Sheets</label>
+                      <input type="number" className="w-full p-2 border border-slate-200 rounded-lg text-sm" value={p.cover_paper_sheets || ""} onChange={e => setProducts(products.map(x => x.id === p.id ? { ...x, cover_paper_sheets: Number(e.target.value) } : x))} /></div>
+                  </div>
+                </div>
+                {/* Job Details to Machine Man */}
+                <div className="space-y-3">
+                  <h5 className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest border-b border-indigo-200 pb-1">⚙️ Job Details (Machine Man)</h5>
+                  <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-2.5">
+                    <p className="text-xs font-semibold text-indigo-700">👤 Machine Man — Auto-filled from Job Assignment</p>
+                    <p className="text-[11px] text-indigo-500 mt-0.5">The operator assigned to the Sample / Production job will appear automatically on the Job Slip.</p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div><label className="block text-xs font-semibold text-slate-600 mb-1">Job Size (e.g. 15 x 20)</label>
+                      <input type="text" className="w-full p-2 border border-slate-200 rounded-lg text-sm" value={p.job_size || ""} onChange={e => setProducts(products.map(x => x.id === p.id ? { ...x, job_size: e.target.value } : x))} /></div>
+                    <div><label className="block text-xs font-semibold text-slate-600 mb-1">Inside Pages</label>
+                      <input type="number" className="w-full p-2 border border-slate-200 rounded-lg text-sm" value={p.inside_pages || ""} onChange={e => setProducts(products.map(x => x.id === p.id ? { ...x, inside_pages: Number(e.target.value) } : x))} /></div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div><label className="block text-xs font-semibold text-slate-600 mb-1">No. of Copies</label>
+                      <input type="number" className="w-full p-2 border border-slate-200 rounded-lg text-sm" value={p.copies || ""} onChange={e => setProducts(products.map(x => x.id === p.id ? { ...x, copies: Number(e.target.value) } : x))} /></div>
+                    <div><label className="block text-xs font-semibold text-slate-600 mb-1">Total Forma</label>
+                      <input type="number" className="w-full p-2 border border-slate-200 rounded-lg text-sm" value={p.total_forms || ""} onChange={e => setProducts(products.map(x => x.id === p.id ? { ...x, total_forms: Number(e.target.value) } : x))} /></div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div><label className="block text-xs font-semibold text-slate-600 mb-1">Polymaster / PS Plates</label>
+                      <input type="number" className="w-full p-2 border border-slate-200 rounded-lg text-sm" value={p.polymaster_plates || ""} onChange={e => setProducts(products.map(x => x.id === p.id ? { ...x, polymaster_plates: Number(e.target.value) } : x))} /></div>
+                    <div><label className="block text-xs font-semibold text-slate-600 mb-1">Plate Size</label>
+                      <input type="text" placeholder="e.g. 18 x 23" className="w-full p-2 border border-slate-200 rounded-lg text-sm" value={p.plate_size || ""} onChange={e => setProducts(products.map(x => x.id === p.id ? { ...x, plate_size: e.target.value } : x))} /></div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div><label className="block text-xs font-semibold text-slate-600 mb-1">Inside Colours (1/2/3/4)</label>
+                      <input type="number" min="1" max="4" className="w-full p-2 border border-slate-200 rounded-lg text-sm" value={p.inside_colors || ""} onChange={e => setProducts(products.map(x => x.id === p.id ? { ...x, inside_colors: Number(e.target.value) } : x))} /></div>
+                    <div><label className="block text-xs font-semibold text-slate-600 mb-1">Colour Names</label>
+                      <input type="text" placeholder="e.g. CMYK" className="w-full p-2 border border-slate-200 rounded-lg text-sm" value={p.inside_color_names || ""} onChange={e => setProducts(products.map(x => x.id === p.id ? { ...x, inside_color_names: e.target.value } : x))} /></div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div><label className="block text-xs font-semibold text-slate-600 mb-1">Cover Colours (1/2/3/4)</label>
+                      <input type="number" min="0" max="4" className="w-full p-2 border border-slate-200 rounded-lg text-sm" value={p.cover_colors || ""} onChange={e => setProducts(products.map(x => x.id === p.id ? { ...x, cover_colors: Number(e.target.value) } : x))} /></div>
+                    <div><label className="block text-xs font-semibold text-slate-600 mb-1">Cover Colour Names</label>
+                      <input type="text" placeholder="e.g. 4+0" className="w-full p-2 border border-slate-200 rounded-lg text-sm" value={p.cover_color_names || ""} onChange={e => setProducts(products.map(x => x.id === p.id ? { ...x, cover_color_names: e.target.value } : x))} /></div>
+                  </div>
+                  <div><label className="block text-xs font-semibold text-slate-600 mb-1">Post Press Notes</label>
+                    <textarea rows={3} placeholder="e.g. Punching, Cutting, Binding instructions..." className="w-full p-2 border border-slate-200 rounded-lg text-sm" value={p.post_press_notes || ""} onChange={e => setProducts(products.map(x => x.id === p.id ? { ...x, post_press_notes: e.target.value } : x))} /></div>
+                </div>
               </div>
             </div>
           </div>

@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { QuotationViewModal } from "../components/QuotationViewModal";
+import { JobSlipModal } from "../components/JobSlipModal";
 import {
   Search, Plus, Calendar, User, Clock, CheckCircle, X,
   FileText, Eye, RefreshCw, AlertTriangle, FlaskConical, Factory,
-  Wrench, Settings, Edit
+  Wrench, Settings, Edit, Printer
 } from "lucide-react";
 import {
   api,
@@ -98,6 +99,10 @@ export function SampleJobs() {
   // State for Quotation View Modal
   const [showQuotationView, setShowQuotationView] = useState(false);
   const [viewQuotationId, setViewQuotationId] = useState<string | null>(null);
+
+  // State for Job Slip Modal
+  const [showJobSlip, setShowJobSlip] = useState(false);
+  const [jobSlipData, setJobSlipData] = useState<SampleJob | null>(null);
 
   // Load sample jobs
   const loadSampleJobs = async () => {
@@ -558,6 +563,18 @@ export function SampleJobs() {
                     </div>
                   )}
 
+                  {/* Job Slip Button */}
+                  <button
+                    onClick={() => {
+                      setJobSlipData(job);
+                      setShowJobSlip(true);
+                    }}
+                    className="flex items-center justify-center gap-1 px-3 py-2 text-xs bg-slate-900 text-white rounded-lg hover:bg-slate-700 transition-colors font-medium"
+                    title="Print Factory Job Slip"
+                  >
+                    <Printer size={13} /> Job Slip
+                  </button>
+
                   {/* View Quote Button - Shows for all job types */}
                   <button
                     onClick={() => {
@@ -690,6 +707,24 @@ export function SampleJobs() {
           onClose={() => {
             setShowQuotationView(false);
             setViewQuotationId(null);
+          }}
+        />
+      )}
+
+      {/* Job Slip Modal */}
+      {showJobSlip && jobSlipData && (
+        <JobSlipModal
+          jobId={jobSlipData.id}
+          jobType="sample"
+          quotationId={jobSlipData.quotationId}
+          customerName={jobSlipData.customer}
+          productName={jobSlipData.product}
+          quantity={jobSlipData.sampleQuantity}
+          dueDate={jobSlipData.dueDate}
+          operatorName={jobSlipData.assignedTo}
+          onClose={() => {
+            setShowJobSlip(false);
+            setJobSlipData(null);
           }}
         />
       )}

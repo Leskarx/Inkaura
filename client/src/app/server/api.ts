@@ -16,7 +16,7 @@ export const supabase = createClient(
 
 // ─── Types ────────────────────────────────────────────────────
 export type SampleStatus = "Pending" | "In Progress" | "QC Pending" | "Awaiting Approval" | "Approved" | "Rejected" | "Production Created";
-export type ProductionStatus = "Pending" | "In Progress" | "QC Pending" | "Completed" | "Dispatched" | "Rework Required" | "Failed";
+export type ProductionStatus = "Pending" | "In Progress" | "QC Pending" | "Completed" | "Packaged" | "Dispatched" | "Rework Required" | "Failed";
 export type Priority = "High" | "Medium" | "Low";
 export type QCStatus = 'Pending' | 'Passed' | 'Failed' | 'Rework';
 export type QCRating = 'Excellent' | 'Good' | 'Fair' | 'Poor' | 'NA';
@@ -238,6 +238,7 @@ export interface ProductionJob {
     dueDate: string;
     createdDate: string;
     value: number;
+    packagingType?: string;
 }
 
 export interface CreateSampleJobRequest {
@@ -262,7 +263,6 @@ export interface CreateProductionJobRequest {
 
 const mapToSampleJob = (item: any): SampleJob => {
     let currentStatus = item.status || 'Pending';
-    // If a production order exists for this quotation, the sample is done
     if (item.quotations?.production_orders && item.quotations.production_orders.length > 0) {
         currentStatus = 'Production Created';
     }
@@ -291,6 +291,9 @@ const mapToProductionJob = (item: any): ProductionJob => {
     const productName = products.length > 0
         ? (products[0].product_name || 'Unknown Product')
         : 'Unknown Product';
+    const packagingType = products.length > 0
+        ? (products[0].packaging_type || '')
+        : '';
 
     return {
         id: item.production_order_id,
@@ -306,6 +309,7 @@ const mapToProductionJob = (item: any): ProductionJob => {
         dueDate: item.delivery_date || '',
         createdDate: item.created_at || new Date().toISOString(),
         value: item.value || 0,
+        packagingType: packagingType,
     };
 };
 
@@ -463,7 +467,7 @@ const PRODUCTION_SELECT = `
         customer_id,
         total_payment,
         customers:customer_id(company_name),
-        quotation_products(product_name)
+        quotation_products(packaging_type, product_name)
     )
 `;
 
@@ -589,6 +593,21 @@ const getActiveQCForOrder = async (
     } catch {
         return { hasActive: false };
     }
+};
+
+// ─── Helper to get next dispatch ID ──────────────────────────
+const getNextDispatchId = async (): Promise<number> => {
+    const { data: lastDispatch } = await supabase
+        .from('dispatches')
+        .select('dispatch_id')
+        .order('dispatch_id', { ascending: false })
+        .limit(1);
+
+    let nextId = 1;
+    if (lastDispatch && lastDispatch.length > 0) {
+        nextId = parseInt(lastDispatch[0].dispatch_id) + 1;
+    }
+    return nextId;
 };
 
 // =====================================================
@@ -944,6 +963,116 @@ export const api = {
         }
     },
 
+    // ─── PACKAGING ────────────────────────────────────────────
+
+    getPackagingJobs: async (): Promise<ProductionJob[]> => {
+        try {
+            const { data, error } = await supabase
+                .from('production_orders')
+                .select(`
+                    *,
+                    employees:assigned_to(full_name),
+                    machines:machine_id(machine_name, machine_id),
+                    quotations:quotation_id(
+                        quotation_id,
+                        customer_id,
+                        total_payment,
+                        customers:customer_id(company_name),
+                        quotation_products(packaging_type, product_name)
+                    )
+                `)
+                .eq('status', 'Completed')
+                .order('created_at', { ascending: false });
+
+            if (error) throw error;
+            if (!data || data.length === 0) return [];
+            return data.map(mapToProductionJob);
+        } catch (error) {
+            console.error('Error fetching packaging jobs:', error);
+            throw error;
+        }
+    },
+
+    markAsPackaged: async (jobId: string, cartonType: string): Promise<void> => {
+        try {
+            // First, check if the job exists and is in 'Completed' status
+            const { data: job, error: fetchError } = await supabase
+                .from('production_orders')
+                .select('production_order_id, status, quotation_id')
+                .eq('production_order_id', jobId)
+                .single();
+
+            if (fetchError) {
+                console.error('Error fetching production job:', fetchError);
+                throw new Error('Production job not found');
+            }
+
+            if (job.status !== 'Completed') {
+                throw new Error(`Job is in '${job.status}' status. Only 'Completed' jobs can be marked as packaged.`);
+            }
+
+            // Update the production order status to 'Packaged'
+            const { error: updateError } = await supabase
+                .from('production_orders')
+                .update({
+                    status: 'Packaged'
+                })
+                .eq('production_order_id', jobId);
+
+            if (updateError) {
+                console.error('Error updating production order:', updateError);
+                throw updateError;
+            }
+
+            // Update the packaging_type in quotation_products if available
+            if (job.quotation_id) {
+                const { data: products, error: prodError } = await supabase
+                    .from('quotation_products')
+                    .select('line_item_id, packaging_type')
+                    .eq('quotation_id', job.quotation_id)
+                    .limit(1);
+
+                if (!prodError && products && products.length > 0) {
+                    const product = products[0];
+
+                    // Only update if the packaging_type is different or empty
+                    if (product.packaging_type !== cartonType) {
+                        await supabase
+                            .from('quotation_products')
+                            .update({ packaging_type: cartonType })
+                            .eq('line_item_id', product.line_item_id);
+                    }
+                }
+            }
+
+            // Create a dispatch record with numeric ID
+            const employeeId = await getCurrentEmployeeId();
+            const nextDispatchId = await getNextDispatchId();
+
+            const { error: dispatchError } = await supabase
+                .from('dispatches')
+                .insert([{
+                    dispatch_id: nextDispatchId,
+                    production_order_id: jobId,
+                    dispatch_date: new Date().toISOString(),
+                    dispatch_by: employeeId,
+                    total_quantity: 1,
+                    quantity_dispatched: 0,
+                    status: 'Pending',
+                    notes: `Packaged with carton type: ${cartonType}`,
+                }]);
+
+            if (dispatchError) {
+                console.warn('Error creating dispatch record, but job was marked as packaged:', dispatchError);
+                // Don't throw here - the main operation succeeded
+            }
+
+        } catch (error) {
+            console.error('Error marking job as packaged:', error);
+            throw error;
+        }
+    },
+
     createProductionJob: async (data: any): Promise<ProductionJob> => {
         try {
             if (data.sampleJobId) {
@@ -1126,9 +1255,12 @@ export const api = {
                 throw fetchError;
             }
 
+            const nextDispatchId = await getNextDispatchId();
+
             const { error: dispatchError } = await supabase
                 .from('dispatches')
                 .insert({
+                    dispatch_id: nextDispatchId,
                     production_order_id: productionOrderId,
                     dispatch_by: employeeId,
                     total_quantity: 1,
@@ -1194,11 +1326,19 @@ export const api = {
 
     getJobsForQC: async (): Promise<QCJob[]> => {
         try {
+<<<<<<< HEAD
             const { data, error } = await supabase.rpc('get_jobs_for_qc');
+=======
+            const { data: pOrders, error: pError } = await supabase
+                .from('production_orders')
+                .select('production_order_id, status, final_quantity, quotation_id')
+                .order('created_at', { ascending: false });
+>>>>>>> 7f6118f (feat: Add Pre-Press Development Checklist for job creation)
 
             if (error) throw error;
             if (!data || data.length === 0) return [];
 
+<<<<<<< HEAD
             return data.map((job: any) => ({
                 order_id: job.order_id,
                 job_type: job.job_type,
@@ -1213,6 +1353,88 @@ export const api = {
                 activeQCStatus: job.active_qc_status,
                 activeQCId: job.active_qc_id,
             }));
+=======
+            const { data: sOrders, error: sError } = await supabase
+                .from('sample_orders')
+                .select('sample_order_id, status, sample_quantity, quotation_id')
+                .order('created_at', { ascending: false });
+
+            if (sError) throw sError;
+
+            const enriched: QCJob[] = [];
+
+            for (const po of (pOrders || [])) {
+                if (po.status !== 'QC Pending' && po.status !== 'Completed') continue;
+
+                const { data: quotation } = await supabase
+                    .from('quotations')
+                    .select('quotation_id, customers:customer_id(company_name)')
+                    .eq('quotation_id', po.quotation_id)
+                    .single();
+
+                const { data: products } = await supabase
+                    .from('quotation_products')
+                    .select('product_name, product_type, printing_technology')
+                    .eq('quotation_id', po.quotation_id)
+                    .limit(1);
+
+                const qcStatus = await getActiveQCForOrder(po.production_order_id, 'Production');
+                const qp = products?.[0];
+                const qt = quotation as any;
+
+                enriched.push({
+                    order_id: po.production_order_id,
+                    job_type: 'Production',
+                    status: po.status,
+                    final_quantity: po.final_quantity || 0,
+                    quotation_id: po.quotation_id,
+                    customer_name: qt?.customers?.company_name || 'Unknown',
+                    product_name: safeProductName(qp?.product_name),
+                    product_type: qp?.product_type || 'Custom',
+                    printing_technology: qp?.printing_technology || 'N/A',
+                    hasActiveQC: qcStatus.hasActive,
+                    activeQCStatus: qcStatus.activeQCStatus,
+                    activeQCId: qcStatus.activeQCId,
+                });
+            }
+
+            for (const so of (sOrders || [])) {
+                if (!["QC Pending", "Awaiting Approval", "Approved", "Production Created"].includes(so.status)) continue;
+
+                const { data: quotation } = await supabase
+                    .from('quotations')
+                    .select('quotation_id, customers:customer_id(company_name)')
+                    .eq('quotation_id', so.quotation_id)
+                    .single();
+
+                const { data: products } = await supabase
+                    .from('quotation_products')
+                    .select('product_name, product_type, printing_technology')
+                    .eq('quotation_id', so.quotation_id)
+                    .limit(1);
+
+                const qcStatus = await getActiveQCForOrder(so.sample_order_id, 'Sample');
+                const qp = products?.[0];
+                const qt = quotation as any;
+
+                enriched.push({
+                    order_id: so.sample_order_id,
+                    job_type: 'Sample',
+                    status: so.status,
+                    final_quantity: so.sample_quantity || 0,
+                    quotation_id: so.quotation_id,
+                    customer_name: qt?.customers?.company_name || 'Unknown',
+                    product_name: safeProductName(qp?.product_name),
+                    product_type: qp?.product_type || 'Custom',
+                    printing_technology: qp?.printing_technology || 'N/A',
+                    hasActiveQC: qcStatus.hasActive,
+                    activeQCStatus: qcStatus.activeQCStatus,
+                    activeQCId: qcStatus.activeQCId,
+                });
+            }
+
+            return enriched;
+>>>>>>> 7f6118f (feat: Add Pre-Press Development Checklist for job creation)
         } catch (error) {
             console.error('Error fetching jobs for QC:', error);
             throw error;
@@ -1267,7 +1489,6 @@ export const api = {
 
             if (error) throw error;
 
-            // Update production order status based on QC result
             if (payload.overall_status === 'Failed') {
                 if (payload.job_type === 'Sample') {
                     await supabase
@@ -1280,8 +1501,6 @@ export const api = {
                         .update({ status: 'Rework Required', progress: 0 })
                         .eq('production_order_id', payload.production_order_id);
                 }
-            } else if (payload.overall_status === 'Passed') {
-                // If passed, it stays in QC Pending (Awaiting Supervisor Approval)
             }
 
             return await enrichQualityCheck(mapToQualityCheck(data));
@@ -1303,6 +1522,7 @@ export const api = {
 
             const approvedBy = await getCurrentEmployeeId();
 
+            // Get the QC record without quotation_id (it doesn't exist in quality_checks)
             const { data: qc, error: fetchError } = await supabase
                 .from('quality_checks')
                 .select('production_order_id, sample_order_id')
@@ -1310,6 +1530,7 @@ export const api = {
                 .single();
             if (fetchError) throw fetchError;
 
+            // Prepare the update payload
             const updatePayload: any = {
                 approved_for_dispatch: true,
                 approved_by: approvedBy,
@@ -1317,18 +1538,89 @@ export const api = {
                 notes: notes || null,
             };
 
-            // Store checklist data if provided
+            // If checklist data is provided, store it
             if (checklist) {
                 updatePayload.post_dev_checklist = checklist;
                 updatePayload.checklist_verified_date = new Date().toISOString();
+                updatePayload.checklist_verified_by = approvedBy;
+
+                // Save carton type to quotation_products
+                if (checklist.carton_type) {
+                    let quotationId = null;
+
+                    // Try to get quotation_id from production order
+                    if (qc.production_order_id) {
+                        const { data: prodOrder } = await supabase
+                            .from('production_orders')
+                            .select('quotation_id')
+                            .eq('production_order_id', qc.production_order_id)
+                            .single();
+
+                        if (prodOrder?.quotation_id) {
+                            quotationId = prodOrder.quotation_id;
+                        }
+                    }
+
+                    // If not found, try from sample order
+                    if (!quotationId && qc.sample_order_id) {
+                        const { data: sampleOrder } = await supabase
+                            .from('sample_orders')
+                            .select('quotation_id')
+                            .eq('sample_order_id', qc.sample_order_id)
+                            .single();
+
+                        if (sampleOrder?.quotation_id) {
+                            quotationId = sampleOrder.quotation_id;
+                        }
+                    }
+
+                    // Update packaging_type if we have a quotation_id
+                    if (quotationId) {
+                        const { data: products } = await supabase
+                            .from('quotation_products')
+                            .select('line_item_id')
+                            .eq('quotation_id', quotationId)
+                            .limit(1);
+
+                        if (products && products.length > 0) {
+                            // Update existing product
+                            await supabase
+                                .from('quotation_products')
+                                .update({ packaging_type: checklist.carton_type })
+                                .eq('line_item_id', products[0].line_item_id);
+                        } else {
+                            // Create new product with packaging_type
+                            await supabase
+                                .from('quotation_products')
+                                .insert([{
+                                    quotation_id: quotationId,
+                                    product_name: 'Custom Print Job',
+                                    packaging_type: checklist.carton_type,
+                                    production_quantity: 1,
+                                    material_type: 'Standard',
+                                    paper_gsm: 0,
+                                    width_cm: 0,
+                                    height_cm: 0,
+                                    printing_technology: 'Offset',
+                                    color_sides: 'Single',
+                                    color_type: 'CMYK',
+                                }]);
+                        }
+                        console.log(`✅ Carton type "${checklist.carton_type}" saved for quotation ${quotationId}`);
+                    } else {
+                        console.warn('⚠️ No quotation_id found to save carton type');
+                    }
+                }
             }
 
+            // Update the quality check
             const { error } = await supabase
                 .from('quality_checks')
                 .update(updatePayload)
                 .eq('qc_id', qcId);
             if (error) throw error;
 
+            // Update the order status
             if (qc.production_order_id) {
                 await supabase
                     .from('production_orders')
@@ -1337,9 +1629,12 @@ export const api = {
             } else if (qc.sample_order_id) {
                 await supabase
                     .from('sample_orders')
-                    .update({ status: 'Awaiting Approval' }) // Send to Sample Jobs for final approval
+                    .update({ status: 'Awaiting Approval' })
                     .eq('sample_order_id', qc.sample_order_id);
             }
+
+            console.log('✅ QC approved successfully');
+
         } catch (error) {
             console.error('Error approving QC:', error);
             throw error;
@@ -1380,7 +1675,6 @@ export const api = {
                 .eq('qc_id', qcId);
             if (error) throw error;
 
-            // Update production order status based on rework requirement
             if (qc.production_order_id) {
                 if (reworkRequired) {
                     await supabase
@@ -1394,7 +1688,6 @@ export const api = {
                         .eq('production_order_id', qc.production_order_id);
                 }
             } else if (qc.sample_order_id) {
-                // If sample job QC fails, send it back to "In Progress" for rework
                 await supabase
                     .from('sample_orders')
                     .update({ status: 'In Progress' })
@@ -1534,7 +1827,6 @@ export const api = {
         }
     },
 
-
     getNextInvoiceNumber: async (): Promise<string> => {
         try {
             const { data, error } = await supabase
@@ -1548,7 +1840,7 @@ export const api = {
                 return 'INV-1001';
             }
 
-            const lastId = data[0].invoice_id; // e.g. "INV-1501"
+            const lastId = data[0].invoice_id;
             const lastNum = parseInt(lastId.replace('INV-', ''), 10);
             const nextNum = isNaN(lastNum) ? 1001 : lastNum + 1;
             return `INV-${String(nextNum).padStart(4, '0')}`;

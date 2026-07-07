@@ -2,26 +2,52 @@
 import { useState, useEffect } from "react";
 import {
     X, Package, User, Calendar, DollarSign, FileText, Clock,
-    CheckCircle, AlertCircle, Eye, Truck, Factory, Activity
+    CheckCircle, AlertCircle, Eye, Truck, Factory, Activity,
+    ClipboardCheck, Printer, ChevronRight, ListChecks
 } from "lucide-react";
-import { api, QuotationData } from "../server/api";
+import { api, QuotationData, supabase } from "../server/api";
+import { PrePressChecklist } from "./PrePressChecklist";
 
 interface QuotationViewModalProps {
     quotationId: string;
     onClose: () => void;
+    onRefresh?: () => void;
 }
 
-export function QuotationViewModal({ quotationId, onClose }: QuotationViewModalProps) {
+interface PrePressChecklistStatus {
+    id: number;
+    job_type: 'sample' | 'production';
+    checklist_data: any;
+    created_at: string;
+}
+
+export function QuotationViewModal({ quotationId, onClose, onRefresh }: QuotationViewModalProps) {
     const [quotation, setQuotation] = useState<QuotationData | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [prePressChecklists, setPrePressChecklists] = useState<PrePressChecklistStatus[]>([]);
+    const [showPrePressChecklist, setShowPrePressChecklist] = useState(false);
+    const [prePressJobType, setPrePressJobType] = useState<'sample' | 'production'>('sample');
+    const [creatingJob, setCreatingJob] = useState(false);
 
     useEffect(() => {
         const fetchQuotation = async () => {
             try {
                 setLoading(true);
-                const data = await api.getQuotationById(quotationId);
+                const [data, checklistsData] = await Promise.all([
+                    api.getQuotationById(quotationId),
+                    supabase
+                        .from('pre_press_checklists')
+                        .select('*')
+                        .eq('quotation_id', quotationId)
+                        .order('created_at', { ascending: false })
+                ]);
+
                 setQuotation(data);
+
+                if (checklistsData.data) {
+                    setPrePressChecklists(checklistsData.data);
+                }
             } catch (err) {
                 setError(err instanceof Error ? err.message : 'Failed to load quotation');
             } finally {
@@ -32,6 +58,96 @@ export function QuotationViewModal({ quotationId, onClose }: QuotationViewModalP
             fetchQuotation();
         }
     }, [quotationId]);
+
+    // Handle creating a job with pre-press checklist
+    const handleCreateJob = (jobType: 'sample' | 'production') => {
+        // Check if there's already a completed pre-press checklist
+        const existingChecklist = prePressChecklists.find(
+            c => c.job_type === jobType
+        );
+
+        if (existingChecklist) {
+            // If checklist exists, proceed to create job directly
+            if (confirm(`A pre-press checklist already exists for this ${jobType} job. Do you want to proceed with creating the ${jobType} job?`)) {
+                createJobDirectly(jobType);
+            }
+        } else {
+            // Show the pre-press checklist modal
+            setPrePressJobType(jobType);
+            setShowPrePressChecklist(true);
+        }
+    };
+
+    // Create job directly (when checklist already exists)
+    const createJobDirectly = async (jobType: 'sample' | 'production') => {
+        setCreatingJob(true);
+        try {
+            // Call your existing job creation logic here
+            // This should be passed as a prop or use the same logic from parent
+            if (onRefresh) {
+                onRefresh();
+            }
+            alert(`✅ ${jobType.charAt(0).toUpperCase() + jobType.slice(1)} job created successfully!`);
+        } catch (err) {
+            console.error('Error creating job:', err);
+            alert('❌ Failed to create job. Please try again.');
+        } finally {
+            setCreatingJob(false);
+        }
+    };
+
+    // Handle pre-press checklist completion
+    const handlePrePressComplete = async (data: any) => {
+        setShowPrePressChecklist(false);
+        // Refresh the quotation to show updated checklist status
+        const { data: checklistsData } = await supabase
+            .from('pre_press_checklists')
+            .select('*')
+            .eq('quotation_id', quotationId)
+            .order('created_at', { ascending: false });
+
+        if (checklistsData) {
+            setPrePressChecklists(checklistsData);
+        }
+
+        // Now create the job
+        await createJobDirectly(prePressJobType);
+        if (onRefresh) {
+            onRefresh();
+        }
+    };
+
+    // Helper to get status color
+    const getStatusColor = (status: string) => {
+        const colors: Record<string, string> = {
+            'Approved': 'bg-green-50 text-green-700 border-green-200',
+            'Rejected': 'bg-red-50 text-red-700 border-red-200',
+            'Sent': 'bg-blue-50 text-blue-700 border-blue-200',
+            'Draft': 'bg-slate-50 text-slate-600 border-slate-200',
+            'Pending': 'bg-amber-50 text-amber-700 border-amber-200',
+        };
+        return colors[status] || 'bg-slate-50 text-slate-600 border-slate-200';
+    };
+
+    // Get workflow status color
+    const getWorkflowStatusColor = (status: string) => {
+        if (status === "Approved" || status === "Completed") return "text-green-600";
+        if (status === "Awaiting Approval" || status === "Pending") return "text-amber-600";
+        if (status === "Rejected" || status === "Failed") return "text-red-600";
+        if (status === "Production Created") return "text-blue-600";
+        if (status === "N/A") return "text-slate-300";
+        return "text-slate-500";
+    };
+
+    // Check if a checklist is complete
+    const isChecklistComplete = (checklistData: any) => {
+        if (!checklistData) return false;
+        // Check all boolean fields (excluding text fields and sign-off fields)
+        const booleanFields = Object.keys(checklistData).filter(key =>
+            typeof checklistData[key] === 'boolean'
+        );
+        return booleanFields.every(key => checklistData[key] === true);
+    };
 
     if (loading) {
         return (
@@ -64,20 +180,28 @@ export function QuotationViewModal({ quotationId, onClose }: QuotationViewModalP
         );
     }
 
-    // Helper to get status color
-    const getStatusColor = (status: string) => {
-        const colors: Record<string, string> = {
-            'Approved': 'bg-green-50 text-green-700 border-green-200',
-            'Rejected': 'bg-red-50 text-red-700 border-red-200',
-            'Sent': 'bg-blue-50 text-blue-700 border-blue-200',
-            'Draft': 'bg-slate-50 text-slate-600 border-slate-200',
-            'Pending': 'bg-amber-50 text-amber-700 border-amber-200',
-        };
-        return colors[status] || 'bg-slate-50 text-slate-600 border-slate-200';
-    };
+    // Get sample and production job statuses
+    const sampleStatus = quotation.workflow.sampleOrder;
+    const productionStatus = quotation.workflow.productionOrder;
+    const canCreateSample = sampleStatus === "N/A" || sampleStatus === "Pending" || sampleStatus === "Rejected";
+    const canCreateProduction = productionStatus === "N/A" || productionStatus === "Pending" || productionStatus === "Rejected";
+
+    // Check if sample job exists and has a checklist
+    const sampleChecklist = prePressChecklists.find(c => c.job_type === 'sample');
+    const productionChecklist = prePressChecklists.find(c => c.job_type === 'production');
 
     return (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            {/* Pre-Press Checklist Modal */}
+            {showPrePressChecklist && (
+                <PrePressChecklist
+                    quotationId={quotationId}
+                    jobType={prePressJobType}
+                    onComplete={handlePrePressComplete}
+                    onCancel={() => setShowPrePressChecklist(false)}
+                />
+            )}
+
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-[95vh] overflow-y-auto">
                 {/* Header - Read Only Banner */}
                 <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 sticky top-0 bg-white/95 backdrop-blur z-10">
@@ -132,41 +256,137 @@ export function QuotationViewModal({ quotationId, onClose }: QuotationViewModalP
                         </div>
                     </div>
 
-                    {/* Workflow Status */}
+                    {/* Workflow Status with Pre-Press Checklist Actions */}
                     <div className="bg-white border border-slate-200 rounded-xl p-5">
                         <h3 className="text-sm font-semibold text-slate-900 mb-4 flex items-center gap-2">
                             <Activity size={16} className="text-indigo-500" /> Workflow Status
                         </h3>
-                        <div className="flex items-center justify-between relative">
+                        <div className="flex items-center justify-between relative mb-6">
                             <div className="absolute left-0 top-1/2 -translate-y-1/2 w-full h-0.5 bg-slate-100" />
                             {[
-                                { label: "Sample", status: quotation.workflow.sampleOrder },
-                                { label: "Production", status: quotation.workflow.productionOrder },
+                                {
+                                    label: "Sample",
+                                    status: sampleStatus,
+                                    canCreate: canCreateSample,
+                                    checklist: sampleChecklist
+                                },
+                                {
+                                    label: "Production",
+                                    status: productionStatus,
+                                    canCreate: canCreateProduction,
+                                    checklist: productionChecklist
+                                },
                                 { label: "Dispatch", status: quotation.workflow.dispatch },
                                 { label: "Invoice", status: quotation.workflow.invoice },
                                 { label: "Closure", status: quotation.workflow.closure }
                             ].map((step, i) => (
                                 <div key={i} className="relative z-10 flex flex-col items-center gap-2 bg-white px-2">
                                     <div className={`w-8 h-8 rounded-full flex items-center justify-center border-2 text-xs font-bold
-                                        ${step.status !== "N/A" && step.status !== "Pending" ?
+                                        ${step.status !== "N/A" && step.status !== "Pending" && step.status !== "Rejected" ?
                                             step.status === "Awaiting Approval" ? "bg-yellow-50 border-yellow-500 text-yellow-700" :
                                                 step.status === "Rejected" ? "bg-red-50 border-red-500 text-red-700" :
-                                                    "bg-indigo-50 border-indigo-500 text-indigo-700" :
+                                                    "bg-green-50 border-green-500 text-green-700" :
                                             "bg-white border-slate-200 text-slate-400"}
                                     `}>
                                         {i + 1}
                                     </div>
                                     <div className="text-center">
                                         <p className="text-xs font-medium text-slate-700">{step.label}</p>
-                                        <p className={`text-[10px] ${step.status === "Awaiting Approval" ? "text-yellow-600" :
-                                            step.status === "Rejected" ? "text-red-600" :
-                                                step.status !== "N/A" ? "text-indigo-600" : "text-slate-400"
-                                            }`}>
+                                        <p className={`text-[10px] ${getWorkflowStatusColor(step.status)}`}>
                                             {step.status}
                                         </p>
                                     </div>
                                 </div>
                             ))}
+                        </div>
+
+                        {/* Pre-Press Checklist Status & Actions */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-slate-200">
+                            {/* Sample Job Section */}
+                            <div className="bg-slate-50 rounded-lg p-4">
+                                <div className="flex items-center justify-between mb-2">
+                                    <h4 className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+                                        <Printer size={14} className="text-indigo-500" /> Sample Job
+                                    </h4>
+                                    <span className={`text-[10px] font-medium px-2 py-0.5 rounded ${getWorkflowStatusColor(sampleStatus)}`}>
+                                        {sampleStatus}
+                                    </span>
+                                </div>
+
+                                {sampleChecklist && (
+                                    <div className="mb-2">
+                                        <div className="flex items-center gap-1.5 text-xs">
+                                            <ListChecks size={12} className={isChecklistComplete(sampleChecklist.checklist_data) ? "text-green-500" : "text-amber-500"} />
+                                            <span className={isChecklistComplete(sampleChecklist.checklist_data) ? "text-green-600" : "text-amber-600"}>
+                                                {isChecklistComplete(sampleChecklist.checklist_data) ? "Pre-Press Checklist Complete ✓" : "Pre-Press Checklist Incomplete"}
+                                            </span>
+                                        </div>
+                                        <p className="text-[10px] text-slate-400">
+                                            {new Date(sampleChecklist.created_at).toLocaleDateString()}
+                                        </p>
+                                    </div>
+                                )}
+
+                                {canCreateSample && (
+                                    <button
+                                        onClick={() => handleCreateJob('sample')}
+                                        disabled={creatingJob}
+                                        className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50"
+                                    >
+                                        <ClipboardCheck size={12} />
+                                        {sampleChecklist ? "Re-run Checklist" : "Create Sample Job"}
+                                    </button>
+                                )}
+
+                                {!canCreateSample && sampleStatus !== "N/A" && (
+                                    <div className="w-full text-center py-1.5 text-xs text-green-600 bg-green-50 rounded-lg border border-green-200">
+                                        ✓ Sample Job {sampleStatus === "Approved" ? "Approved" : "Created"}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Production Job Section */}
+                            <div className="bg-slate-50 rounded-lg p-4">
+                                <div className="flex items-center justify-between mb-2">
+                                    <h4 className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+                                        <Factory size={14} className="text-indigo-500" /> Production Job
+                                    </h4>
+                                    <span className={`text-[10px] font-medium px-2 py-0.5 rounded ${getWorkflowStatusColor(productionStatus)}`}>
+                                        {productionStatus}
+                                    </span>
+                                </div>
+
+                                {productionChecklist && (
+                                    <div className="mb-2">
+                                        <div className="flex items-center gap-1.5 text-xs">
+                                            <ListChecks size={12} className={isChecklistComplete(productionChecklist.checklist_data) ? "text-green-500" : "text-amber-500"} />
+                                            <span className={isChecklistComplete(productionChecklist.checklist_data) ? "text-green-600" : "text-amber-600"}>
+                                                {isChecklistComplete(productionChecklist.checklist_data) ? "Pre-Press Checklist Complete ✓" : "Pre-Press Checklist Incomplete"}
+                                            </span>
+                                        </div>
+                                        <p className="text-[10px] text-slate-400">
+                                            {new Date(productionChecklist.created_at).toLocaleDateString()}
+                                        </p>
+                                    </div>
+                                )}
+
+                                {canCreateProduction && (
+                                    <button
+                                        onClick={() => handleCreateJob('production')}
+                                        disabled={creatingJob}
+                                        className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50"
+                                    >
+                                        <ClipboardCheck size={12} />
+                                        {productionChecklist ? "Re-run Checklist" : "Create Production Job"}
+                                    </button>
+                                )}
+
+                                {!canCreateProduction && productionStatus !== "N/A" && (
+                                    <div className="w-full text-center py-1.5 text-xs text-green-600 bg-green-50 rounded-lg border border-green-200">
+                                        ✓ Production Job {productionStatus === "Approved" ? "Approved" : "Created"}
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </div>
 

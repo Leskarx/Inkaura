@@ -1,11 +1,17 @@
-import { useState, useEffect } from "react";
-import { Play, Pause, AlertTriangle, CheckCircle, Clock, ChevronDown, X, Cpu, RefreshCw, FlaskConical, Factory, Package, Trash2, Edit3, MessageSquare, FileText, Eye } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import {
+  Play, Pause, AlertTriangle, CheckCircle, Clock, ChevronDown, X, Cpu,
+  RefreshCw, FlaskConical, Factory, Package, Trash2, Edit3, MessageSquare,
+  FileText, Eye, Printer, FileSpreadsheet, Info
+} from "lucide-react";
 import { api, ProductionJob, ProductionStatus, SampleJob, SampleStatus } from "../server/api";
 import { supabase } from "../server/api";
 
+// ============ CONSTANTS ============
 const issueTypes = ["Registration problem", "Color inconsistency", "Paper jam", "Ink drying issue", "Machine vibration", "Other"];
 const pauseReasons = ["Material shortage", "Machine maintenance", "Operator break", "Quality check", "Customer approval needed", "Other"];
 
+// ============ INTERFACES ============
 interface AssignedJob {
   id: string;
   type: 'sample' | 'production';
@@ -73,6 +79,27 @@ interface QualityCheckReport {
   job_type?: 'Production' | 'Sample';
 }
 
+interface QuotationDetails {
+  quotation_id: string;
+  customer_name: string;
+  product_name: string;
+  job_size?: string;
+  copies?: number;
+  total_forms?: number;
+  polymaster_plates?: number;
+  colors?: number;
+  color_names?: string;
+  cover_colors?: number;
+  cover_color_names?: string;
+  special_instructions?: string;
+  estimated_hours?: number;
+  press_type?: string;
+  created_date: string;
+  due_date?: string;
+  plates?: number;
+  job_description?: string;
+}
+
 interface JobCardProps {
   job: AssignedJob;
   onStatusUpdate: () => void;
@@ -81,6 +108,534 @@ interface JobCardProps {
   currentEmployee: string;
 }
 
+// ============ JOB DETAILS MODAL COMPONENT ============
+function JobDetailsModal({
+  job,
+  isOpen,
+  onClose
+}: {
+  job: AssignedJob;
+  isOpen: boolean;
+  onClose: () => void;
+}) {
+  const [quotationDetails, setQuotationDetails] = useState<QuotationDetails | null>(null);
+  const [loading, setLoading] = useState(false);
+  const printRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (isOpen && job) {
+      fetchQuotationDetails();
+    }
+  }, [isOpen, job]);
+
+  const fetchQuotationDetails = async () => {
+    if (!job.quotationId) {
+      setQuotationDetails(null);
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('quotations')
+        .select('*')
+        .eq('quotation_id', job.quotationId)
+        .single();
+
+      if (error) {
+        console.error('Error fetching quotation:', error);
+        setQuotationDetails(null);
+      } else if (data) {
+        setQuotationDetails({
+          quotation_id: data.quotation_id,
+          customer_name: data.customer_name || job.customer,
+          product_name: data.product_name || job.product,
+          job_size: data.job_size,
+          copies: data.copies,
+          total_forms: data.total_forms,
+          polymaster_plates: data.polymaster_plates || data.plates,
+          colors: data.colors,
+          color_names: data.color_names,
+          cover_colors: data.cover_colors,
+          cover_color_names: data.cover_color_names,
+          special_instructions: data.special_instructions,
+          estimated_hours: data.estimated_hours,
+          press_type: data.press_type,
+          created_date: data.created_date,
+          due_date: data.due_date,
+          plates: data.plates,
+          job_description: data.job_description,
+        });
+      }
+    } catch (err) {
+      console.error('Failed to fetch quotation:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePrint = () => {
+    if (printRef.current) {
+      const printWindow = window.open('', '_blank', 'width=1000,height=800');
+      if (printWindow) {
+        const content = printRef.current.innerHTML;
+        printWindow.document.write(`
+          <html>
+            <head>
+              <title>Job Details - ${job.id}</title>
+              <style>
+                * { box-sizing: border-box; margin: 0; padding: 0; }
+                body { 
+                  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; 
+                  padding: 30px; 
+                  background: #f1f4f9;
+                  margin: 0;
+                }
+                .container { 
+                  max-width: 900px; 
+                  margin: 0 auto; 
+                  background: white;
+                  padding: 32px 36px;
+                  border-radius: 16px;
+                  box-shadow: 0 4px 24px rgba(0,0,0,0.06);
+                }
+                
+                /* Header */
+                .header { 
+                  text-align: center; 
+                  padding-bottom: 20px; 
+                  margin-bottom: 28px; 
+                  border-bottom: 2px solid #eef2f6;
+                }
+                .header h1 { 
+                  font-size: 22px; 
+                  color: #0f172a;
+                  font-weight: 700;
+                  letter-spacing: 0.5px;
+                }
+                .header .subtitle { 
+                  font-size: 14px; 
+                  color: #64748b;
+                  margin-top: 2px;
+                }
+                .header .job-id {
+                  font-size: 14px;
+                  color: #3b82f6;
+                  font-weight: 600;
+                  margin-top: 4px;
+                }
+                .badges {
+                  display: flex;
+                  gap: 8px;
+                  justify-content: center;
+                  margin-top: 10px;
+                  flex-wrap: wrap;
+                }
+                .badge {
+                  padding: 4px 14px;
+                  border-radius: 20px;
+                  font-size: 12px;
+                  font-weight: 600;
+                }
+                .badge.in-progress { background: #dbeafe; color: #1d4ed8; }
+                .badge.pending { background: #f1f5f9; color: #475569; }
+                .badge.completed { background: #dcfce7; color: #16a34a; }
+                .badge.rework { background: #fee2e2; color: #dc2626; }
+                .badge.qc { background: #fef3c7; color: #d97706; }
+                .badge.approved { background: #d1fae5; color: #059669; }
+                .badge.high { background: #fee2e2; color: #dc2626; }
+                .badge.medium { background: #fef3c7; color: #d97706; }
+                .badge.low { background: #f1f5f9; color: #475569; }
+                .badge.sample { background: #fef3c7; color: #d97706; }
+                .badge.production { background: #dbeafe; color: #1d4ed8; }
+                
+                /* Section */
+                .section { margin-bottom: 28px; }
+                .section-title {
+                  font-size: 15px;
+                  font-weight: 700;
+                  color: #0f172a;
+                  margin-bottom: 14px;
+                  padding-bottom: 8px;
+                  border-bottom: 2px solid #eef2f6;
+                  display: flex;
+                  align-items: center;
+                  gap: 8px;
+                }
+                
+                /* Grid */
+                .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+                .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+                
+                .field {
+                  background: #f8fafc;
+                  padding: 10px 14px;
+                  border-radius: 8px;
+                  border: 1px solid #eef2f6;
+                }
+                .field .label {
+                  font-size: 10px;
+                  font-weight: 600;
+                  color: #94a3b8;
+                  text-transform: uppercase;
+                  letter-spacing: 0.5px;
+                  display: block;
+                  margin-bottom: 1px;
+                }
+                .field .value {
+                  font-size: 14px;
+                  color: #0f172a;
+                  font-weight: 500;
+                }
+                .field.full { grid-column: 1 / -1; }
+                
+                /* Progress */
+                .progress-box {
+                  background: #f8fafc;
+                  padding: 16px 20px;
+                  border-radius: 8px;
+                  border: 1px solid #eef2f6;
+                }
+                .progress-header {
+                  display: flex;
+                  justify-content: space-between;
+                  font-size: 13px;
+                  color: #475569;
+                  margin-bottom: 6px;
+                }
+                .progress-header .percent { font-weight: 700; color: #0f172a; }
+                .progress-track {
+                  width: 100%;
+                  height: 20px;
+                  background: #eef2f6;
+                  border-radius: 10px;
+                  overflow: hidden;
+                }
+                .progress-fill {
+                  height: 100%;
+                  background: linear-gradient(90deg, #3b82f6, #6366f1);
+                  display: flex;
+                  align-items: center;
+                  justify-content: center;
+                  color: white;
+                  font-size: 11px;
+                  font-weight: 700;
+                  transition: width 0.4s;
+                }
+                
+                /* Quotation */
+                .quote-grid {
+                  display: grid;
+                  grid-template-columns: 1fr 1fr 1fr;
+                  gap: 8px;
+                }
+                .quote-item {
+                  background: #f8fafc;
+                  padding: 8px 12px;
+                  border-radius: 6px;
+                  border: 1px solid #eef2f6;
+                }
+                .quote-item .label {
+                  font-size: 9px;
+                  font-weight: 600;
+                  color: #94a3b8;
+                  text-transform: uppercase;
+                  letter-spacing: 0.3px;
+                  display: block;
+                }
+                .quote-item .value {
+                  font-size: 13px;
+                  color: #0f172a;
+                  font-weight: 500;
+                }
+                .quote-item.full { grid-column: 1 / -1; }
+                
+                /* Material */
+                .material-grid {
+                  display: grid;
+                  grid-template-columns: 1fr 1fr;
+                  gap: 12px;
+                }
+                .material-card {
+                  padding: 12px 16px;
+                  border-radius: 8px;
+                  border: 1px solid #eef2f6;
+                }
+                .material-card.used { background: #f0fdf4; border-color: #86efac; }
+                .material-card.waste { background: #fef2f2; border-color: #fca5a5; }
+                .material-card .label {
+                  font-size: 10px;
+                  font-weight: 600;
+                  color: #94a3b8;
+                  text-transform: uppercase;
+                  display: block;
+                }
+                .material-card .value {
+                  font-size: 16px;
+                  font-weight: 700;
+                  color: #0f172a;
+                }
+                
+                /* Footer */
+                .footer {
+                  margin-top: 28px;
+                  padding-top: 16px;
+                  border-top: 2px solid #eef2f6;
+                  text-align: center;
+                  color: #94a3b8;
+                  font-size: 12px;
+                }
+                
+                @media print {
+                  body { background: white; padding: 15px; }
+                  .container { box-shadow: none; padding: 20px; border-radius: 0; }
+                  .field, .quote-item, .material-card { break-inside: avoid; }
+                }
+                @media (max-width: 768px) {
+                  .grid-3 { grid-template-columns: 1fr 1fr; }
+                  .quote-grid { grid-template-columns: 1fr 1fr; }
+                }
+                @media (max-width: 480px) {
+                  .grid-2, .grid-3 { grid-template-columns: 1fr; }
+                  .quote-grid { grid-template-columns: 1fr; }
+                  .material-grid { grid-template-columns: 1fr; }
+                }
+              </style>
+            </head>
+            <body>
+              <div class="container">${content}</div>
+              <script>
+                window.onload = function() { window.print(); };
+              <\/script>
+            </body>
+          </html>
+        `);
+        printWindow.document.close();
+      }
+    }
+  };
+
+  if (!isOpen) return null;
+
+  const getStatusClass = (status: string) => {
+    if (status === "In Progress" || status === "Running") return "in-progress";
+    if (status === "Pending") return "pending";
+    if (status === "Completed" || status === "Approved") return "completed";
+    if (status === "Rework Required" || status === "Failed") return "rework";
+    if (status === "QC Pending") return "qc";
+    return "pending";
+  };
+
+  const getPriorityClass = (priority: string) => priority.toLowerCase();
+
+  return (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto shadow-2xl">
+        {/* Modal Header */}
+        <div className="sticky top-0 bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between z-10 rounded-t-2xl">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center">
+              <FileText size={20} className="text-indigo-600" />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-slate-900">Job Details</h3>
+              <p className="text-xs text-indigo-500 font-medium">{job.id}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handlePrint}
+              className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors shadow-sm"
+            >
+              <Printer size={15} /> Print
+            </button>
+            <button
+              onClick={onClose}
+              className="w-9 h-9 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+            >
+              <X size={20} />
+            </button>
+          </div>
+        </div>
+
+        {/* Content */}
+        <div className="p-6 space-y-6" ref={printRef}>
+
+          {/* Hero Header */}
+          <div className="text-center py-4 bg-gradient-to-br from-indigo-50 to-purple-50 rounded-2xl border border-indigo-100">
+            <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-white shadow-sm mb-3">
+              <FileText size={26} className="text-indigo-600" />
+            </div>
+            <h1 className="text-xl font-bold text-slate-900 tracking-tight">JOB DETAILS</h1>
+            <p className="text-sm text-slate-500 mt-0.5">{job.type === 'sample' ? 'Sample Order' : 'Production Order'}</p>
+            <p className="text-sm font-bold text-indigo-600 mt-1">{job.id}</p>
+            <div className="flex items-center justify-center gap-2 mt-3 flex-wrap">
+              <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${
+                job.status === 'In Progress' || job.status === 'Running' ? 'bg-blue-100 text-blue-700 border border-blue-200' :
+                job.status === 'Pending' ? 'bg-slate-100 text-slate-600 border border-slate-200' :
+                job.status === 'Completed' || job.status === 'Approved' ? 'bg-green-100 text-green-700 border border-green-200' :
+                job.status === 'Rework Required' || job.status === 'Failed' ? 'bg-red-100 text-red-700 border border-red-200' :
+                job.status === 'QC Pending' ? 'bg-amber-100 text-amber-700 border border-amber-200' :
+                'bg-slate-100 text-slate-600 border border-slate-200'
+              }`}>{job.status}</span>
+              <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${
+                job.priority === 'High' ? 'bg-red-100 text-red-700 border border-red-200' :
+                job.priority === 'Medium' ? 'bg-amber-100 text-amber-700 border border-amber-200' :
+                'bg-slate-100 text-slate-600 border border-slate-200'
+              }`}>{job.priority} Priority</span>
+              <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${
+                job.type === 'sample' ? 'bg-amber-100 text-amber-700 border border-amber-200' : 'bg-blue-100 text-blue-700 border border-blue-200'
+              }`}>{job.type === 'sample' ? '🧪 Sample' : '🏭 Production'}</span>
+            </div>
+          </div>
+
+          {/* Job Information */}
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-6 h-6 rounded-lg bg-indigo-100 flex items-center justify-center text-xs">📋</div>
+              <h2 className="text-sm font-bold text-slate-700 uppercase tracking-wider">Job Information</h2>
+              <div className="flex-1 h-px bg-slate-100" />
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              {[
+                { label: 'Job ID', value: job.id },
+                { label: 'Type', value: job.type === 'sample' ? 'Sample' : 'Production' },
+                { label: 'Product', value: job.product || 'Unknown' },
+                { label: 'Customer', value: job.customer || 'Unknown' },
+                { label: 'Quantity', value: `${job.quantity.toLocaleString()} units` },
+                { label: 'Machine', value: job.machine || 'Unassigned' },
+                { label: 'Operator', value: job.assignedTo || 'Unassigned' },
+                { label: 'Value', value: `$${job.value?.toLocaleString() || '0'}` },
+                { label: 'Due By', value: new Date(job.dueDate).toLocaleString() },
+              ].map(({ label, value }) => (
+                <div key={label} className="bg-slate-50 rounded-xl p-3 border border-slate-100 hover:border-indigo-100 transition-colors">
+                  <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">{label}</span>
+                  <span className="text-sm font-semibold text-slate-800 leading-tight">{value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Progress */}
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-6 h-6 rounded-lg bg-indigo-100 flex items-center justify-center text-xs">📊</div>
+              <h2 className="text-sm font-bold text-slate-700 uppercase tracking-wider">Progress</h2>
+              <div className="flex-1 h-px bg-slate-100" />
+            </div>
+            <div className="bg-slate-50 rounded-xl p-4 border border-slate-100">
+              <div className="flex justify-between items-center mb-3">
+                <span className="text-sm text-slate-500 font-medium">Completion Status</span>
+                <span className="text-sm font-bold text-slate-900">
+                  {Math.round(job.progress || 0)}% · {job.quantity.toLocaleString()} units
+                </span>
+              </div>
+              <div className="w-full h-5 bg-slate-200 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full flex items-center justify-center transition-all duration-500"
+                  style={{ width: `${Math.min(Math.round(job.progress || 0), 100)}%` }}
+                >
+                  {(job.progress || 0) > 12 && (
+                    <span className="text-[10px] font-bold text-white">{Math.round(job.progress || 0)}%</span>
+                  )}
+                </div>
+              </div>
+              <div className="mt-2 flex justify-between text-xs text-slate-400">
+                <span>0%</span>
+                <span>{Math.round(job.progress || 0)}% complete</span>
+                <span>100%</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Quotation Details */}
+          {quotationDetails && (
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-6 h-6 rounded-lg bg-indigo-100 flex items-center justify-center text-xs">🧾</div>
+                <h2 className="text-sm font-bold text-slate-700 uppercase tracking-wider">Quotation Details</h2>
+                <div className="flex-1 h-px bg-slate-100" />
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                {[
+                  { label: 'Quotation ID', value: quotationDetails.quotation_id },
+                  { label: 'Customer', value: quotationDetails.customer_name },
+                  { label: 'Product', value: quotationDetails.product_name },
+                  ...(quotationDetails.job_size ? [{ label: 'Job Size', value: quotationDetails.job_size }] : []),
+                  ...(quotationDetails.copies ? [{ label: 'Copies', value: String(quotationDetails.copies) }] : []),
+                  ...(quotationDetails.total_forms ? [{ label: 'Total Forms', value: String(quotationDetails.total_forms) }] : []),
+                  ...((quotationDetails.polymaster_plates || quotationDetails.plates) ? [{ label: 'Plates', value: String(quotationDetails.polymaster_plates || quotationDetails.plates) }] : []),
+                  ...(quotationDetails.colors !== undefined ? [{ label: 'Colors', value: String(quotationDetails.colors) }] : []),
+                  ...(quotationDetails.estimated_hours ? [{ label: 'Est. Hours', value: `${quotationDetails.estimated_hours}h` }] : []),
+                  ...(quotationDetails.press_type ? [{ label: 'Press Type', value: quotationDetails.press_type }] : []),
+                ].map(({ label, value }) => (
+                  <div key={label} className="bg-slate-50 rounded-xl p-3 border border-slate-100 hover:border-indigo-100 transition-colors">
+                    <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">{label}</span>
+                    <span className="text-sm font-semibold text-slate-800 leading-tight">{value}</span>
+                  </div>
+                ))}
+                {quotationDetails.color_names && (
+                  <div className="col-span-3 bg-slate-50 rounded-xl p-3 border border-slate-100">
+                    <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Color Names</span>
+                    <span className="text-sm font-semibold text-slate-800">{quotationDetails.color_names}</span>
+                  </div>
+                )}
+                {quotationDetails.special_instructions && (
+                  <div className="col-span-3 bg-amber-50 rounded-xl p-3 border border-amber-200">
+                    <span className="block text-[10px] font-bold text-amber-600 uppercase tracking-widest mb-1">⚠️ Special Instructions</span>
+                    <span className="text-sm text-amber-900 whitespace-pre-wrap">{quotationDetails.special_instructions}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Material Usage */}
+          {(job.materialUsed || job.materialWaste) && (
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-6 h-6 rounded-lg bg-indigo-100 flex items-center justify-center text-xs">📦</div>
+                <h2 className="text-sm font-bold text-slate-700 uppercase tracking-wider">Material Usage</h2>
+                <div className="flex-1 h-px bg-slate-100" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                {job.materialUsed && (
+                  <div className="bg-green-50 rounded-xl p-4 border border-green-200">
+                    <span className="block text-[10px] font-bold text-green-600 uppercase tracking-widest mb-1">Material Used</span>
+                    <span className="text-2xl font-bold text-green-800">{job.materialUsed}</span>
+                    <span className="text-sm text-green-600 ml-1">units</span>
+                  </div>
+                )}
+                {job.materialWaste && (
+                  <div className="bg-red-50 rounded-xl p-4 border border-red-200">
+                    <span className="block text-[10px] font-bold text-red-600 uppercase tracking-widest mb-1">Material Waste</span>
+                    <span className="text-2xl font-bold text-red-800">{job.materialWaste}</span>
+                    <span className="text-sm text-red-600 ml-1">units</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Footer */}
+          <div className="pt-4 border-t border-slate-100 text-center">
+            <p className="text-xs text-slate-400">Generated on {new Date().toLocaleString()}</p>
+            <p className="text-[11px] text-slate-300 mt-0.5">© {new Date().getFullYear()} – Machine Operator Dashboard</p>
+          </div>
+        </div>
+
+        {loading && (
+          <div className="flex items-center justify-center py-8 gap-3">
+            <div className="w-8 h-8 border-[3px] border-indigo-600 border-t-transparent rounded-full animate-spin" />
+            <span className="text-sm text-slate-500">Loading quotation details...</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ============ JOB CARD COMPONENT ============
 function JobCard({ job, onStatusUpdate, inventoryItems, onInventoryUpdate, currentEmployee }: JobCardProps) {
   const [running, setRunning] = useState(job.status === "In Progress");
   const [showIssue, setShowIssue] = useState(false);
@@ -99,6 +654,7 @@ function JobCard({ job, onStatusUpdate, inventoryItems, onInventoryUpdate, curre
   const [materialNote, setMaterialNote] = useState("");
   const [showDoneModal, setShowDoneModal] = useState(false);
   const [doneNote, setDoneNote] = useState("");
+  const [showDetailsModal, setShowDetailsModal] = useState(false);
 
   // QC Report state
   const [showQCReportModal, setShowQCReportModal] = useState(false);
@@ -384,7 +940,7 @@ function JobCard({ job, onStatusUpdate, inventoryItems, onInventoryUpdate, curre
             timestamp: new Date().toISOString()
           }]);
 
-        alert("✅ Production job completed! Sent to Quality Control for inspection.");
+        alert("✅ Production job completed! Sent to Quality Control.");
       }
       setShowDoneModal(false);
       setDoneNote("");
@@ -607,6 +1163,15 @@ function JobCard({ job, onStatusUpdate, inventoryItems, onInventoryUpdate, curre
       {isReworkRequired && <div className="h-1 bg-red-500" />}
 
       <div className="p-5">
+        {/* Details Modal */}
+        {showDetailsModal && (
+          <JobDetailsModal
+            job={job}
+            isOpen={showDetailsModal}
+            onClose={() => setShowDetailsModal(false)}
+          />
+        )}
+
         {/* QC Report Modal */}
         {showQCReportModal && qcReport && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -822,9 +1387,19 @@ function JobCard({ job, onStatusUpdate, inventoryItems, onInventoryUpdate, curre
             <h3 className="text-slate-900 text-sm" style={{ fontWeight: 700 }}>{job.product}</h3>
             <p className="text-slate-500 text-xs mt-0.5">{job.customer} · {job.machine}</p>
           </div>
-          <span className={`inline-flex px-2 py-0.5 rounded border text-xs flex-shrink-0 ${getStatusColor()}`} style={{ fontWeight: 500 }}>
-            {getStatusDisplay()}
-          </span>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {/* Job Details Icon */}
+            <button
+              onClick={() => setShowDetailsModal(true)}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors border border-transparent hover:border-indigo-200"
+              title="View Job Details"
+            >
+              <FileSpreadsheet size={16} />
+            </button>
+            <span className={`inline-flex px-2 py-0.5 rounded border text-xs ${getStatusColor()}`} style={{ fontWeight: 500 }}>
+              {getStatusDisplay()}
+            </span>
+          </div>
         </div>
 
         {(materialUsed > 0 || materialWaste > 0) && (
@@ -1031,7 +1606,7 @@ function JobCard({ job, onStatusUpdate, inventoryItems, onInventoryUpdate, curre
           </div>
         ) : (
           <div className="flex flex-wrap gap-2">
-            {/* View QC Report button - shows for BOTH sample and production when rework required */}
+            {/* View QC Report button */}
             {isReworkRequired && (
               <button
                 onClick={() => {
@@ -1110,7 +1685,7 @@ function JobCard({ job, onStatusUpdate, inventoryItems, onInventoryUpdate, curre
               </button>
             )}
 
-            {/* Pause/Start button - for both sample and production */}
+            {/* Pause/Start button */}
             {(job.status === "Pending" || job.status === "In Progress") && !isReworkRequired && (
               <button
                 onClick={running ? () => setShowPauseModal(true) : handleStartWork}
@@ -1128,7 +1703,7 @@ function JobCard({ job, onStatusUpdate, inventoryItems, onInventoryUpdate, curre
               </button>
             )}
 
-            {/* Material button - for both sample and production when running */}
+            {/* Material button */}
             {running && (
               <button
                 onClick={() => setShowMaterialModal(true)}
@@ -1140,7 +1715,7 @@ function JobCard({ job, onStatusUpdate, inventoryItems, onInventoryUpdate, curre
               </button>
             )}
 
-            {/* Issue + Send to QC buttons - for both sample and production */}
+            {/* Issue + Send to QC buttons */}
             {(job.status === "In Progress" || job.status === "Pending" || job.status === "Rework Required") &&
               job.status !== "QC Pending" &&
               job.status !== "Completed" &&
@@ -1175,14 +1750,14 @@ function JobCard({ job, onStatusUpdate, inventoryItems, onInventoryUpdate, curre
                 </>
               )}
 
-            {/* QC Pending status indicator - for both sample and production */}
+            {/* QC Pending status indicator */}
             {job.status === "QC Pending" && (
               <div className="flex-1 text-center py-2 px-3 rounded-lg text-xs bg-amber-50 text-amber-700 border border-amber-200">
                 🔍 In Quality Control - Awaiting Inspection
               </div>
             )}
 
-            {/* Awaiting Approval - for sample jobs */}
+            {/* Awaiting Approval */}
             {isSample && job.status === "Awaiting Approval" && (
               <div className="flex-1 text-center py-2 px-3 rounded-lg text-xs bg-yellow-50 text-yellow-700 border border-yellow-200">
                 ⏳ Sent to Supervisor
@@ -1203,7 +1778,7 @@ function JobCard({ job, onStatusUpdate, inventoryItems, onInventoryUpdate, curre
               </div>
             )}
 
-            {/* Rework required helper message - for both sample and production */}
+            {/* Rework required helper message */}
             {isReworkRequired && (
               <div className="w-full text-center py-1.5 px-3 rounded-lg text-xs bg-red-50 text-red-600 border border-red-200">
                 ⚠️ After rework, click "Send to QC (Rework)" above
@@ -1216,6 +1791,7 @@ function JobCard({ job, onStatusUpdate, inventoryItems, onInventoryUpdate, curre
   );
 }
 
+// ============ MACHINE OPERATOR MAIN COMPONENT ============
 export function MachineOperator() {
   const [assignedJobs, setAssignedJobs] = useState<AssignedJob[]>([]);
   const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
@@ -1359,13 +1935,11 @@ export function MachineOperator() {
           table: 'inventory',
         },
         () => {
-          // Refresh inventory when any inventory item is updated
           loadInventory();
         }
       )
       .subscribe();
 
-    // Set up real-time subscription for material usage logs
     const usageSubscription = supabase
       .channel('operator_usage_changes')
       .on(
@@ -1376,7 +1950,6 @@ export function MachineOperator() {
           table: 'material_usage_logs',
         },
         () => {
-          // Refresh inventory when a new usage log is created
           loadInventory();
         }
       )
@@ -1429,28 +2002,30 @@ export function MachineOperator() {
   }
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-3">
+    <div className="p-6 space-y-6 max-w-7xl mx-auto">
+      {/* Header */}
+      <div className="flex items-center justify-between flex-wrap gap-3 border-b border-slate-200 pb-4">
         <div>
-          <h1 className="text-slate-900" style={{ fontSize: "1.25rem", fontWeight: 700 }}>Machine Operator</h1>
+          <h1 className="text-2xl font-bold text-slate-900">Machine Operator</h1>
           <p className="text-slate-500 text-sm mt-0.5">
             {operatorName} · {operatorMachine} · {shift}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           <button
             onClick={loadJobs}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50 transition-colors"
           >
-            <RefreshCw size={13} /> Refresh
+            <RefreshCw size={16} /> Refresh
           </button>
-          <div className="flex items-center gap-1.5 text-xs text-green-700 bg-green-50 border border-green-200 px-3 py-1.5 rounded-lg">
-            <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+          <div className="flex items-center gap-1.5 text-sm text-green-700 bg-green-50 border border-green-200 px-3 py-1.5 rounded-lg">
+            <div className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse" />
             Machine Online
           </div>
         </div>
       </div>
 
+      {/* Stats Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
           { label: "My Jobs Today", value: totalJobs, sub: `${runningJobs} running, ${pendingJobs} pending`, color: "text-indigo-600 bg-indigo-50" },
@@ -1458,24 +2033,25 @@ export function MachineOperator() {
           { label: "Avg Progress", value: `${avgProgress}%`, sub: "Across all jobs", color: "text-purple-600 bg-purple-50" },
           { label: "Rework Required", value: reworkJobs, sub: "Jobs needing rework", color: "text-red-600 bg-red-50" },
         ].map((s) => (
-          <div key={s.label} className="bg-card border border-border rounded-xl p-4">
-            <div className={`w-8 h-8 rounded-lg flex items-center justify-center mb-3 ${s.color}`}>
-              <Cpu size={16} />
+          <div key={s.label} className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow">
+            <div className={`w-10 h-10 rounded-lg flex items-center justify-center mb-3 ${s.color}`}>
+              <Cpu size={20} />
             </div>
-            <p className="text-slate-900 mb-0.5" style={{ fontSize: "1.25rem", fontWeight: 700 }}>{s.value}</p>
-            <p className="text-slate-700 text-xs" style={{ fontWeight: 500 }}>{s.label}</p>
-            <p className="text-slate-400 text-xs mt-0.5">{s.sub}</p>
+            <p className="text-2xl font-bold text-slate-900 mb-0.5">{s.value}</p>
+            <p className="text-sm font-medium text-slate-700">{s.label}</p>
+            <p className="text-xs text-slate-400 mt-0.5">{s.sub}</p>
           </div>
         ))}
       </div>
 
+      {/* Sample Jobs Section */}
       {sampleJobs.length > 0 && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-slate-700 text-sm flex items-center gap-2" style={{ fontWeight: 600 }}>
-              <FlaskConical size={16} className="text-amber-500" /> Sample Jobs
+        <div className="space-y-4 mt-8">
+          <div className="flex items-center justify-between border-b border-amber-100 pb-2">
+            <h2 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
+              <FlaskConical size={20} className="text-amber-500" /> Sample Jobs
             </h2>
-            <span className="text-xs text-slate-400">{sampleJobs.length} jobs</span>
+            <span className="text-sm text-slate-400">{sampleJobs.length} jobs</span>
           </div>
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
             {sampleJobs.map((job) => (
@@ -1492,13 +2068,14 @@ export function MachineOperator() {
         </div>
       )}
 
+      {/* Production Jobs Section */}
       {productionJobs.length > 0 && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-slate-700 text-sm flex items-center gap-2" style={{ fontWeight: 600 }}>
-              <Factory size={16} className="text-indigo-500" /> Production Jobs
+        <div className="space-y-4 mt-8">
+          <div className="flex items-center justify-between border-b border-indigo-100 pb-2">
+            <h2 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
+              <Factory size={20} className="text-indigo-500" /> Production Jobs
             </h2>
-            <span className="text-xs text-slate-400">{productionJobs.length} jobs</span>
+            <span className="text-sm text-slate-400">{productionJobs.length} jobs</span>
           </div>
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
             {productionJobs.map((job) => (
@@ -1515,13 +2092,14 @@ export function MachineOperator() {
         </div>
       )}
 
+      {/* Empty State */}
       {sampleJobs.length === 0 && productionJobs.length === 0 && (
-        <div className="text-center py-12 bg-card border border-border rounded-xl">
-          <div className="text-slate-400 mb-2">
-            <Cpu size={48} className="mx-auto" />
+        <div className="text-center py-16 bg-white border border-slate-200 rounded-xl shadow-sm">
+          <div className="text-slate-300 mb-4">
+            <Cpu size={64} className="mx-auto" />
           </div>
-          <p className="text-slate-500 text-sm">No jobs assigned</p>
-          <p className="text-slate-400 text-xs mt-1">Check back later for new assignments</p>
+          <p className="text-slate-500 text-lg font-medium">No jobs assigned</p>
+          <p className="text-slate-400 text-sm mt-1">Check back later for new assignments</p>
         </div>
       )}
     </div>

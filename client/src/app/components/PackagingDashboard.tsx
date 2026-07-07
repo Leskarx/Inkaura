@@ -1,240 +1,512 @@
-import { useState } from "react";
-import { Box, CheckCircle, Clock, AlertTriangle, Truck, Tag, Package, User, Plus, QrCode, Search, ShieldAlert, Archive } from "lucide-react";
+import { useState, useEffect } from "react";
+import {
+  Box, CheckCircle, Clock, Package, Archive, RefreshCw,
+  AlertCircle, Loader2, ChevronRight, Tag, User, Calendar,
+  ArrowRight, ClipboardCheck
+} from "lucide-react";
+import { api, ProductionJob, supabase } from "../server/api";
 
-const packingJobs = [
-  { id: "PKG-0042", jobId: "JB-0093", title: "Carton Box — Metro Retail",    client: "Metro Retail Group",    qty: 2000, unit: "pcs",   material: "Corrugated B-flute", labelType: "Brand Label",  status: "In Progress", packingTeam: "Team A", progress: 65, startTime: "11:00 AM", completionEta: "2:30 PM", labelStatus: "Printing" },
-  { id: "PKG-0041", jobId: "JB-0092", title: "Flexible Pack — FreshFarm",    client: "FreshFarm Foods",       qty: 10000, unit: "units", material: "BOPP Bags",          labelType: "Product Label", status: "Completed",   packingTeam: "Team B", progress: 100, startTime: "9:30 AM", completionEta: "Done", labelStatus: "Affixed" },
-  { id: "PKG-0040", jobId: "JB-0089", title: "Corrugated Shipper — TechPack", client: "TechPack Industries",  qty: 2000, unit: "boxes",  material: "Corrugated E-flute", labelType: "Shipping Label", status: "Ready",       packingTeam: "Unassigned", progress: 0, startTime: "—", completionEta: "4:00 PM", labelStatus: "Pending Gen." },
-  { id: "PKG-0039", jobId: "JB-0088", title: "Shrink Sleeve — Himalaya",     client: "Himalaya Naturals",     qty: 10000, unit: "units", material: "Shrink Film",        labelType: "Shrink Label",  status: "Ready",       packingTeam: "Unassigned", progress: 0, startTime: "—", completionEta: "5:30 PM", labelStatus: "Pending Gen." },
-  { id: "PKG-0038", jobId: "JB-0086", title: "Blister Pack — Sunrise",       client: "Sunrise Pharma",        qty: 50000, unit: "strips", material: "PVC Tray + Carton", labelType: "Pharma Label",  status: "QC Hold",     packingTeam: "Team C", progress: 30, startTime: "8:00 AM", completionEta: "Pending QC", labelStatus: "Affixed" },
-];
-
-const materialUsage = [
-  { material: "Corrugated B-flute Sheet", used: 1200, available: 4800, unit: "sheets", forecastHours: 12 },
-  { material: "BOPP Bags 10×14\"",        used: 8500, available: 24000, unit: "pcs", forecastHours: 8 },
-  { material: "Shrink Film Roll 30mic",   used: 7,    available: 8, unit: "rolls", forecastHours: 1.5 },
-  { material: "Packing Tape (3\")",       used: 42,   available: 48, unit: "rolls", forecastHours: 2 },
-  { material: "Strapping Band",           used: 3,    available: 15, unit: "rolls", forecastHours: 36 },
-];
-
-const dispatchReady = [
-  { id: "JB-0092", client: "FreshFarm Foods",    items: "Flexible Pack (10,000 units)", weight: "45 kg",  pallets: 2, dimensions: "1.2m x 1.0m", stagingArea: "Dock 1" },
-  { id: "JB-0086", client: "TechPack Industries", items: "Corrugated Box (2,000 pcs)",  weight: "280 kg", pallets: 8, dimensions: "1.2m x 1.2m", stagingArea: "Dock 3" },
-];
-
-const statusConfig: Record<string, { bg: string; text: string; border: string }> = {
-  "In Progress": { bg: "bg-indigo-50", text: "text-indigo-700", border: "border-indigo-200" },
-  "Completed":   { bg: "bg-green-50",  text: "text-green-700",  border: "border-green-200" },
-  "Ready":       { bg: "bg-amber-50",  text: "text-amber-700",  border: "border-amber-200" },
-  "QC Hold":     { bg: "bg-red-50",    text: "text-red-700",    border: "border-red-200" },
+// ── Status config ─────────────────────────────────────────────
+const statusConfig: Record<string, { bg: string; text: string; border: string; dot: string }> = {
+  Completed: { bg: "bg-blue-50", text: "text-blue-700", border: "border-blue-200", dot: "bg-blue-500" },
+  Packaged: { bg: "bg-green-50", text: "text-green-700", border: "border-green-200", dot: "bg-green-500" },
+  Dispatched: { bg: "bg-purple-50", text: "text-purple-700", border: "border-purple-200", dot: "bg-purple-500" },
 };
 
-export function PackagingDashboard() {
-  const [filter, setFilter] = useState("All");
+// ── Confirm Modal ─────────────────────────────────────────────
+function ConfirmModal({
+  job,
+  onConfirm,
+  onCancel,
+  loading,
+  cartonType,
+  setCartonType,
+  cartonTypes,
+  isAutoSelected
+}: {
+  job: ProductionJob;
+  onConfirm: () => void;
+  onCancel: () => void;
+  loading: boolean;
+  cartonType: string;
+  setCartonType: (value: string) => void;
+  cartonTypes: string[];
+  isAutoSelected: boolean;
+}) {
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+        <div className="p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-11 h-11 rounded-xl bg-green-100 flex items-center justify-center flex-shrink-0">
+              <Package size={20} className="text-green-600" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-slate-900">Mark as Packaged</h3>
+              <p className="text-xs text-slate-500 mt-0.5">Confirm packaging is complete for this job</p>
+            </div>
+          </div>
 
-  const filtered = packingJobs.filter((j) => filter === "All" || j.status === filter);
+          <div className="bg-slate-50 rounded-xl p-4 mb-5 border border-slate-200 space-y-2">
+            <div className="flex justify-between text-xs">
+              <span className="text-slate-500">Order ID</span>
+              <span className="font-semibold text-indigo-600">{job.id}</span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-slate-500">Customer</span>
+              <span className="font-semibold text-slate-800">{job.customer}</span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-slate-500">Product</span>
+              <span className="font-semibold text-slate-800 text-right max-w-[60%] truncate">{job.product}</span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-slate-500">Quantity</span>
+              <span className="font-semibold text-slate-800">{job.quantity.toLocaleString()} pcs</span>
+            </div>
+          </div>
+
+          {/* Carton Type Selection - Auto-selected from QC */}
+          <div className="mb-5">
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-xs font-semibold text-slate-700">
+                Carton Type <span className="text-red-500">*</span>
+              </label>
+              {isAutoSelected && cartonType && (
+                <span className="flex items-center gap-1 text-[10px] text-green-600 bg-green-50 px-2 py-0.5 rounded-full font-medium">
+                  <CheckCircle size={10} /> Auto-selected from QC
+                </span>
+              )}
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {cartonTypes.map((type) => (
+                <button
+                  key={type}
+                  type="button"
+                  onClick={() => setCartonType(type)}
+                  className={`px-3 py-2 rounded-lg text-xs font-semibold border transition-all ${cartonType === type
+                      ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
+                      : "bg-white text-slate-600 border-slate-300 hover:border-indigo-400 hover:bg-indigo-50"
+                    }`}
+                >
+                  {type}
+                </button>
+              ))}
+            </div>
+            {isAutoSelected && cartonType && (
+              <p className="text-[10px] text-slate-500 mt-1.5">
+                ✓ Carton type was selected in the Post-Development Checklist during QC approval.
+                {!cartonType && " No carton type was selected in QC. Please select one below."}
+              </p>
+            )}
+          </div>
+
+          {/* Flow arrow */}
+          <div className="flex items-center justify-center gap-3 mb-5">
+            <span className="px-3 py-1.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg text-xs font-semibold">Completed</span>
+            <ArrowRight size={16} className="text-slate-400" />
+            <span className="px-3 py-1.5 bg-green-50 text-green-700 border border-green-200 rounded-lg text-xs font-semibold">Packaged</span>
+            <ArrowRight size={16} className="text-slate-400" />
+            <span className="px-3 py-1.5 bg-slate-100 text-slate-500 border border-slate-200 rounded-lg text-xs">Dispatch</span>
+          </div>
+
+          <p className="text-xs text-slate-500 mb-5 text-center">
+            This will move the order to <strong>Dispatch</strong> where an invoice will be generated and the order marked as delivered.
+          </p>
+
+          <div className="flex gap-3">
+            <button
+              onClick={onCancel}
+              disabled={loading}
+              className="flex-1 px-4 py-2.5 text-sm font-medium text-slate-700 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={onConfirm}
+              disabled={loading || !cartonType}
+              className="flex-1 px-4 py-2.5 text-sm font-semibold text-white bg-green-600 rounded-xl hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
+              {loading ? (
+                <><Loader2 size={15} className="animate-spin" /> Updating…</>
+              ) : (
+                <><CheckCircle size={15} /> Confirm Packaged</>
+              )}
+            </button>
+          </div>
+          {!cartonType && (
+            <p className="text-xs text-red-500 mt-2 text-center">
+              {isAutoSelected
+                ? "No carton type was selected in QC. Please select one above."
+                : "Please select a carton type"}
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Main Component ────────────────────────────────────────────
+export function PackagingDashboard() {
+  const [jobs, setJobs] = useState<ProductionJob[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [confirmJob, setConfirmJob] = useState<ProductionJob | null>(null);
+  const [processingId, setProcessingId] = useState<string | null>(null);
+  const [successId, setSuccessId] = useState<string | null>(null);
+  const [packagingTypes, setPackagingTypes] = useState<Record<string, string>>({});
+  const [selectedCartonType, setSelectedCartonType] = useState<string>("");
+  const [isAutoSelected, setIsAutoSelected] = useState(false);
+
+  const cartonTypes = ["RTI", "STI", "CLB", "SLB"];
+
+  const load = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await api.getPackagingJobs();
+      setJobs(data);
+      // Fetch packaging_type for each job from quotation_products
+      if (data.length > 0) {
+        const quotationIds = [...new Set(data.map(j => j.quotationId).filter(Boolean))];
+        if (quotationIds.length > 0) {
+          const { data: prods } = await supabase
+            .from('quotation_products')
+            .select('quotation_id, packaging_type')
+            .in('quotation_id', quotationIds);
+          if (prods) {
+            const map: Record<string, string> = {};
+            prods.forEach((p: any) => {
+              if (p.packaging_type) map[p.quotation_id] = p.packaging_type;
+            });
+            setPackagingTypes(map);
+          }
+        }
+      }
+    } catch (e) {
+      setError("Failed to load packaging jobs. Please retry.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const handleConfirmPackaged = async () => {
+    if (!confirmJob) return;
+    if (!selectedCartonType) {
+      alert("Please select a carton type.");
+      return;
+    }
+    setProcessingId(confirmJob.id);
+    try {
+      // Update the job with carton type and status
+      await api.markAsPackaged(confirmJob.id, selectedCartonType);
+      setSuccessId(confirmJob.id);
+      setConfirmJob(null);
+      setSelectedCartonType("");
+      setIsAutoSelected(false);
+      // Remove from list after short delay
+      setTimeout(() => {
+        setJobs(prev => prev.filter(j => j.id !== confirmJob.id));
+        setSuccessId(null);
+        setProcessingId(null);
+      }, 1800);
+    } catch (e) {
+      setError("Failed to mark as packaged. Please try again.");
+      setProcessingId(null);
+      setConfirmJob(null);
+    }
+  };
+
+  const handleOpenConfirmModal = (job: ProductionJob) => {
+    // Pre-fill carton type if available from QC
+    const existingType = packagingTypes[job.quotationId] || "";
+    setSelectedCartonType(existingType);
+    setIsAutoSelected(!!existingType);
+    setConfirmJob(job);
+  };
+
+  const kpis = [
+    {
+      label: "Awaiting Packaging",
+      value: jobs.length,
+      icon: <Box size={16} />,
+      color: "text-blue-600 bg-blue-50",
+    },
+    {
+      label: "Ready for Dispatch",
+      value: "→",
+      icon: <ChevronRight size={16} />,
+      color: "text-purple-600 bg-purple-50",
+      sub: "Goes to Dispatch tab",
+    },
+  ];
 
   return (
     <div className="p-6 space-y-6">
+      {/* Confirm Modal */}
+      {confirmJob && (
+        <ConfirmModal
+          job={confirmJob}
+          onConfirm={handleConfirmPackaged}
+          onCancel={() => {
+            setConfirmJob(null);
+            setSelectedCartonType("");
+            setIsAutoSelected(false);
+          }}
+          loading={!!processingId}
+          cartonType={selectedCartonType}
+          setCartonType={setSelectedCartonType}
+          cartonTypes={cartonTypes}
+          isAutoSelected={isAutoSelected}
+        />
+      )}
+
+      {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-slate-900" style={{ fontSize: "1.25rem", fontWeight: 700 }}>Packaging & Dispatch</h1>
-          <p className="text-slate-500 text-sm mt-0.5">Packing queue, labeling workflow, and dispatch preparation</p>
+          <h1 className="text-slate-900 text-xl font-bold">Packaging</h1>
+          <p className="text-slate-500 text-sm mt-0.5">
+            QC-cleared production orders ready to be packed
+          </p>
         </div>
-        <div className="flex gap-2">
-          <button className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50 transition-colors">
-            <QrCode size={13} /> Batch Barcode Gen
-          </button>
-          <button className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg text-white" style={{ background: "#4f46e5", fontWeight: 500 }}>
-            <Plus size={13} /> Create Packing Task
-          </button>
-        </div>
+        <button
+          onClick={load}
+          disabled={loading}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-50"
+        >
+          <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
+          Refresh
+        </button>
       </div>
 
-      {/* KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      {/* Workflow banner */}
+      <div className="bg-gradient-to-r from-slate-900 to-slate-800 rounded-xl p-4 flex items-center gap-3 text-white overflow-x-auto">
         {[
-          { label: "Active Packing Jobs", value: packingJobs.filter(j => j.status === "In Progress").length, icon: <Box size={16} />, color: "text-indigo-600 bg-indigo-50" },
-          { label: "Ready for Packing",   value: packingJobs.filter(j => j.status === "Ready").length,       icon: <Clock size={16} />, color: "text-amber-600 bg-amber-50" },
-          { label: "Pending QC Clearance",value: packingJobs.filter(j => j.status === "QC Hold").length,     icon: <ShieldAlert size={16} />, color: "text-red-600 bg-red-50" },
-          { label: "Ready for Dispatch",  value: dispatchReady.length,                                        icon: <Truck size={16} />, color: "text-purple-600 bg-purple-50" },
-        ].map((s) => (
-          <div key={s.label} className="bg-card border border-border rounded-xl p-4 flex flex-col justify-center items-center text-center">
-            <div className={`w-10 h-10 rounded-full flex items-center justify-center mb-2 ${s.color}`}>{s.icon}</div>
-            <p className="text-slate-900" style={{ fontSize: "1.5rem", fontWeight: 700 }}>{s.value}</p>
-            <p className="text-slate-600 text-xs" style={{ fontWeight: 500 }}>{s.label}</p>
+          { label: "QC Passed", color: "bg-green-500", done: true },
+          { label: "Completed", color: "bg-blue-500", done: true },
+          { label: "📦 Packaging", color: "bg-indigo-500 ring-2 ring-white", active: true },
+          { label: "Dispatch", color: "bg-purple-500", done: false },
+          { label: "Delivered", color: "bg-emerald-500", done: false },
+        ].map((step, i, arr) => (
+          <div key={step.label} className="flex items-center gap-2 flex-shrink-0">
+            <div className="flex items-center gap-2">
+              <div className={`w-2.5 h-2.5 rounded-full ${step.color}`} />
+              <span className={`text-xs font-medium ${step.active ? "text-white" : "text-white/60"}`}>
+                {step.label}
+              </span>
+            </div>
+            {i < arr.length - 1 && <ChevronRight size={12} className="text-white/30 flex-shrink-0" />}
           </div>
         ))}
       </div>
 
-      {/* Filter */}
-      <div className="flex border border-slate-200 rounded-lg overflow-hidden w-fit">
-        {["All", "Ready", "In Progress", "Completed", "QC Hold"].map((f) => (
-          <button
-            key={f}
-            onClick={() => setFilter(f)}
-            className={`px-3 py-1.5 text-xs transition-colors ${filter === f ? "bg-indigo-600 text-white" : "text-slate-600 hover:bg-slate-50"}`}
-            style={{ fontWeight: filter === f ? 600 : 400 }}
-          >
-            {f}
-          </button>
-        ))}
+      {/* KPIs */}
+      <div className="grid grid-cols-2 md:grid-cols-2 gap-4">
+        <div className="bg-card border border-border rounded-xl p-4 flex items-center gap-4">
+          <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center flex-shrink-0">
+            <Box size={18} className="text-blue-600" />
+          </div>
+          <div>
+            <p className="text-2xl font-bold text-slate-900">{loading ? "–" : jobs.length}</p>
+            <p className="text-xs text-slate-500 font-medium">Orders Awaiting Packaging</p>
+          </div>
+        </div>
+        <div className="bg-card border border-border rounded-xl p-4 flex items-center gap-4">
+          <div className="w-10 h-10 rounded-xl bg-green-50 flex items-center justify-center flex-shrink-0">
+            <ClipboardCheck size={18} className="text-green-600" />
+          </div>
+          <div>
+            <p className="text-2xl font-bold text-slate-900">
+              {loading ? "–" : jobs.reduce((s, j) => s + j.quantity, 0).toLocaleString()}
+            </p>
+            <p className="text-xs text-slate-500 font-medium">Total Units to Pack</p>
+          </div>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-        {/* Packing Jobs */}
-        <div className="xl:col-span-2 space-y-3">
-          {filtered.map((job) => {
-            const sc = statusConfig[job.status];
+      {/* Error */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-center gap-3">
+          <AlertCircle size={16} className="text-red-500 flex-shrink-0" />
+          <p className="text-sm text-red-700 flex-1">{error}</p>
+          <button
+            onClick={() => setError(null)}
+            className="text-red-500 hover:text-red-700 text-xs font-medium"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {/* Job List */}
+      {loading ? (
+        <div className="flex items-center justify-center py-20 gap-3">
+          <Loader2 size={22} className="animate-spin text-slate-400" />
+          <span className="text-sm text-slate-500">Loading packaging jobs…</span>
+        </div>
+      ) : jobs.length === 0 ? (
+        <div className="bg-card border border-border rounded-xl p-14 flex flex-col items-center text-center gap-4">
+          <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center">
+            <Archive size={28} className="text-slate-300" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-slate-700">No jobs ready for packaging</p>
+            <p className="text-xs text-slate-400 mt-1">
+              Orders will appear here once they pass QC and are marked Completed
+            </p>
+          </div>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {jobs.map((job) => {
+            const isSuccess = successId === job.id;
+            const isProcessing = processingId === job.id;
+            const existingCartonType = packagingTypes[job.quotationId] || "";
+            const hasCartonType = !!existingCartonType;
+
             return (
-              <div key={job.id} className="bg-card border border-border rounded-xl p-5">
-                <div className="flex items-start gap-3 mb-3">
-                  <div className="w-9 h-9 rounded-lg bg-indigo-50 flex items-center justify-center flex-shrink-0">
-                    <Box size={15} className="text-indigo-600" />
+              <div
+                key={job.id}
+                className={`bg-card border rounded-xl p-5 transition-all duration-300 ${isSuccess
+                    ? "border-green-400 bg-green-50/50 shadow-md shadow-green-100"
+                    : hasCartonType
+                      ? "border-indigo-200 shadow-sm shadow-indigo-50"
+                      : "border-border hover:shadow-sm"
+                  }`}
+              >
+                {/* Job header */}
+                <div className="flex items-start gap-3 mb-4">
+                  <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center flex-shrink-0">
+                    <Box size={16} className="text-indigo-600" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap mb-0.5">
-                      <p className="text-indigo-600 text-xs" style={{ fontWeight: 700 }}>{job.id}</p>
-                      <p className="text-slate-400 text-xs">· {job.jobId}</p>
-                      <span className={`inline-flex px-2 py-0.5 rounded border text-xs ${sc.bg} ${sc.text} ${sc.border}`} style={{ fontWeight: 500 }}>
-                        {job.status}
+                    <div className="flex items-center gap-2 flex-wrap mb-1">
+                      <span className="text-indigo-600 text-xs font-bold">{job.id}</span>
+                      <span className={`inline-flex px-2 py-0.5 rounded border text-[10px] font-semibold ${statusConfig["Completed"].bg} ${statusConfig["Completed"].text} ${statusConfig["Completed"].border
+                        }`}>
+                        Completed
                       </span>
-                      {job.labelStatus === "Pending Gen." && (
-                        <span className="inline-flex px-2 py-0.5 rounded border text-xs bg-slate-100 text-slate-600 border-slate-200 ml-1">
-                          <QrCode size={10} className="mr-1 inline" /> No Labels
+                      <span className={`text-xs px-1.5 py-0.5 rounded border font-medium ${job.priority === "High"
+                          ? "bg-red-50 text-red-600 border-red-200"
+                          : job.priority === "Medium"
+                            ? "bg-amber-50 text-amber-600 border-amber-200"
+                            : "bg-slate-50 text-slate-500 border-slate-200"
+                        }`}>
+                        {job.priority}
+                      </span>
+                      {hasCartonType && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded border bg-green-50 text-green-700 border-green-200 font-medium">
+                          ✓ Carton: {existingCartonType}
                         </span>
                       )}
                     </div>
-                    <p className="text-slate-900 text-sm" style={{ fontWeight: 600 }}>{job.title}</p>
-                    <p className="text-slate-500 text-xs mt-0.5">{job.client} · {job.qty.toLocaleString()} {job.unit}</p>
+                    <p className="text-slate-900 text-sm font-semibold truncate">{job.product}</p>
+                    <p className="text-slate-500 text-xs mt-0.5">{job.customer}</p>
                   </div>
                 </div>
 
-                {job.status === "In Progress" && (
-                  <div className="mb-3">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs text-slate-500">Packing progress</span>
-                      <span className="text-xs text-slate-700" style={{ fontWeight: 600 }}>{job.progress}%</span>
-                    </div>
-                    <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
-                      <div className="h-full rounded-full bg-indigo-500" style={{ width: `${job.progress}%` }} />
-                    </div>
+                {/* Carton Type Display - Show if exists */}
+                {existingCartonType && (
+                  <div className="mb-3 bg-green-50 border border-green-200 rounded-lg px-3 py-2 flex items-center justify-between">
+                    <span className="text-xs text-green-600 flex items-center gap-1.5">
+                      <CheckCircle size={12} /> Carton Type from QC
+                    </span>
+                    <span className="text-sm font-bold text-green-700">{existingCartonType}</span>
                   </div>
                 )}
 
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs mb-4">
-                  <div className="bg-slate-50 rounded-lg p-2">
-                    <p className="text-slate-400 mb-0.5">Material</p>
-                    <p className="text-slate-700 truncate" style={{ fontWeight: 500 }}>{job.material}</p>
+                {!existingCartonType && (
+                  <div className="mb-3 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                    <span className="text-xs text-amber-600 flex items-center gap-1.5">
+                      <AlertCircle size={12} /> No carton type selected in QC
+                    </span>
+                    <p className="text-[10px] text-amber-500 mt-0.5">
+                      You'll need to select one when marking as packaged
+                    </p>
                   </div>
-                  <div className="bg-slate-50 rounded-lg p-2">
-                    <p className="text-slate-400 mb-0.5">Label Workflow</p>
-                    <p className="text-slate-700" style={{ fontWeight: 500 }}>{job.labelStatus}</p>
+                )}
+
+                {/* Details grid */}
+                <div className="grid grid-cols-3 gap-2 mb-4">
+                  <div className="bg-slate-50 rounded-lg p-2.5">
+                    <div className="flex items-center gap-1 mb-1">
+                      <Tag size={10} className="text-slate-400" />
+                      <span className="text-[10px] text-slate-400 font-medium">Quantity</span>
+                    </div>
+                    <p className="text-xs font-bold text-slate-800">{job.quantity.toLocaleString()}</p>
                   </div>
-                  <div className="bg-slate-50 rounded-lg p-2">
-                    <p className="text-slate-400 mb-0.5">Team</p>
-                    <p className="text-slate-700" style={{ fontWeight: 500 }}>{job.packingTeam}</p>
+                  <div className="bg-slate-50 rounded-lg p-2.5">
+                    <div className="flex items-center gap-1 mb-1">
+                      <User size={10} className="text-slate-400" />
+                      <span className="text-[10px] text-slate-400 font-medium">Operator</span>
+                    </div>
+                    <p className="text-xs font-bold text-slate-800 truncate">{job.assignedTo}</p>
                   </div>
-                  <div className="bg-slate-50 rounded-lg p-2">
-                    <p className="text-slate-400 mb-0.5">ETA</p>
-                    <p className={`${job.status === "QC Hold" ? "text-red-600" : "text-slate-700"}`} style={{ fontWeight: 500 }}>{job.completionEta}</p>
+                  <div className="bg-slate-50 rounded-lg p-2.5">
+                    <div className="flex items-center gap-1 mb-1">
+                      <Calendar size={10} className="text-slate-400" />
+                      <span className="text-[10px] text-slate-400 font-medium">Due</span>
+                    </div>
+                    <p className="text-xs font-bold text-slate-800">
+                      {job.dueDate ? new Date(job.dueDate).toLocaleDateString("en-IN", { day: "2-digit", month: "short" }) : "—"}
+                    </p>
                   </div>
                 </div>
 
-                <div className="flex gap-2">
-                  {job.status === "Ready" && job.labelStatus === "Pending Gen." && (
-                    <button className="flex-1 flex items-center justify-center gap-1.5 text-xs text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg py-1.5 transition-colors" style={{ fontWeight: 500 }}>
-                      <QrCode size={13} /> Generate Labels
-                    </button>
-                  )}
-                  {job.status === "Ready" && job.labelStatus !== "Pending Gen." && (
-                    <button className="flex-1 text-xs text-white rounded-lg py-1.5 transition-colors" style={{ background: "#4f46e5", fontWeight: 500 }}>
-                      Start Packing
-                    </button>
-                  )}
-                  {job.status === "Completed" && (
-                    <button className="flex-1 text-xs text-white bg-purple-600 hover:bg-purple-700 rounded-lg py-1.5 transition-colors" style={{ fontWeight: 500 }}>
-                      Move to Dispatch Area
-                    </button>
-                  )}
-                  {job.status === "QC Hold" && (
-                    <button className="flex-1 flex justify-center items-center gap-1.5 text-xs text-white bg-red-600 hover:bg-red-700 rounded-lg px-3 py-1.5 transition-colors font-medium">
-                      <ShieldAlert size={12} /> Request Manager Override / QC Review
-                    </button>
-                  )}
-                  <button className="px-3 py-1.5 text-xs border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50 transition-colors">
-                    Details
+                {/* Value */}
+                {job.value > 0 && (
+                  <div className="mb-4 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 flex items-center justify-between">
+                    <span className="text-xs text-emerald-600">Order Value</span>
+                    <span className="text-sm font-bold text-emerald-700">₹{job.value.toLocaleString()}</span>
+                  </div>
+                )}
+
+                {/* Action */}
+                {isSuccess ? (
+                  <div className="flex items-center justify-center gap-2 py-2.5 rounded-xl bg-green-100 text-green-700 text-sm font-semibold">
+                    <CheckCircle size={15} />
+                    Marked as Packaged!
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => handleOpenConfirmModal(job)}
+                    disabled={isProcessing}
+                    className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold text-white transition-colors disabled:opacity-50 ${hasCartonType
+                        ? "bg-green-600 hover:bg-green-700"
+                        : "bg-indigo-600 hover:bg-indigo-700"
+                      }`}
+                  >
+                    {isProcessing ? (
+                      <><Loader2 size={14} className="animate-spin" /> Processing…</>
+                    ) : (
+                      <>
+                        <Package size={14} />
+                        {hasCartonType ? "Mark as Packaged (Auto)" : "Mark as Packaged"}
+                      </>
+                    )}
                   </button>
-                </div>
+                )}
               </div>
             );
           })}
         </div>
+      )}
 
-        {/* Right panel */}
-        <div className="space-y-4">
-          {/* Packaging Material Usage */}
-          <div className="bg-card border border-border rounded-xl p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <Archive className="text-amber-600" size={16} />
-              <h3 className="text-slate-900 text-sm" style={{ fontWeight: 600 }}>Material Depletion Forecast</h3>
-            </div>
-            <div className="space-y-4">
-              {materialUsage.map((m) => {
-                const pct = Math.round((m.used / (m.used + m.available)) * 100);
-                const isCritical = m.forecastHours < 3;
-                return (
-                  <div key={m.material}>
-                    <div className="flex justify-between items-end mb-1">
-                      <span className="text-xs text-slate-700 font-medium truncate flex-1 mr-2">{m.material}</span>
-                      <div className="text-right flex-shrink-0">
-                        <span className={`text-[10px] block ${isCritical ? 'text-red-500 font-bold' : 'text-slate-400'}`}>Runs out in ~{m.forecastHours}h</span>
-                        <span className="text-[10px] text-slate-500">{m.used} / {m.used + m.available} {m.unit}</span>
-                      </div>
-                    </div>
-                    <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
-                      <div className={`h-full rounded-full ${isCritical ? "bg-red-500" : pct > 75 ? "bg-amber-500" : "bg-indigo-500"}`} style={{ width: `${pct}%` }} />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Ready for Dispatch */}
-          <div className="bg-card border border-border rounded-xl overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-purple-50/50">
-              <div className="flex items-center gap-2">
-                <Truck className="text-purple-600" size={16} />
-                <h3 className="text-slate-900 text-sm" style={{ fontWeight: 600 }}>Ready for Dispatch</h3>
-              </div>
-              <span className="text-xs bg-purple-100 text-purple-700 border border-purple-200 px-2 py-0.5 rounded-full" style={{ fontWeight: 600 }}>{dispatchReady.length}</span>
-            </div>
-            {dispatchReady.map((d) => (
-              <div key={d.id} className="p-4 border-b border-slate-50 last:border-0 hover:bg-slate-50/50 transition-colors">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <p className="text-indigo-600 text-xs" style={{ fontWeight: 700 }}>{d.id}</p>
-                    <p className="text-slate-800 text-xs mt-0.5" style={{ fontWeight: 600 }}>{d.client}</p>
-                  </div>
-                  <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-medium border border-slate-200">
-                    {d.stagingArea}
-                  </span>
-                </div>
-                <p className="text-slate-500 text-xs mt-1">{d.items}</p>
-                <div className="grid grid-cols-2 gap-2 mt-2 bg-slate-50 rounded p-2 text-xs text-slate-600">
-                  <div className="flex items-center gap-1.5"><Package size={12} className="text-slate-400" /> <span className="font-medium">{d.weight}</span></div>
-                  <div className="flex items-center gap-1.5"><Box size={12} className="text-slate-400" /> <span>{d.pallets} pallets</span></div>
-                  <div className="col-span-2 flex items-center gap-1.5 text-[10px]"><Tag size={12} className="text-slate-400" /> Dim: {d.dimensions}</div>
-                </div>
-                <button className="mt-3 w-full text-xs text-white hover:bg-purple-700 rounded-lg py-1.5 transition-colors" style={{ background: "#6d28d9", fontWeight: 500 }}>
-                  Assign to Transport
-                </button>
-              </div>
-            ))}
-          </div>
+      {/* Info note */}
+      {!loading && jobs.length > 0 && (
+        <div className="flex items-start gap-2 text-xs text-slate-400 pt-2">
+          <Clock size={12} className="flex-shrink-0 mt-0.5" />
+          <span>
+            Carton types are <strong className="text-green-600">auto-selected</strong> from the QC Post-Development Checklist.
+            {Object.values(packagingTypes).filter(Boolean).length === 0 && (
+              <span className="text-amber-600"> No carton types found — please ensure QC checklist was completed.</span>
+            )}
+          </span>
         </div>
-      </div>
+      )}
     </div>
   );
 }

@@ -130,15 +130,13 @@ export function InventoryManagement() {
     }
   };
 
-  // Load material usage logs with filters
+  // Load material usage logs with filters - FIXED
   const loadMaterialUsage = async () => {
     try {
+      // First, get the material usage logs
       let query = supabase
         .from('material_usage_logs')
-        .select(`
-          *,
-          inventory_item:inventory_item_id (*)
-        `)
+        .select('*')
         .order('timestamp', { ascending: false });
 
       // Apply date range filters
@@ -152,26 +150,52 @@ export function InventoryManagement() {
       const { data, error } = await query;
 
       if (error) throw error;
-      if (data) {
-        let filteredData = data;
+
+      if (data && data.length > 0) {
+        // Get all inventory items in one query
+        const inventoryIds = [...new Set(data.map(log => log.inventory_item_id))];
+        const { data: inventoryData, error: inventoryError } = await supabase
+          .from('inventory')
+          .select('id, item, unit')
+          .in('id', inventoryIds);
+
+        if (inventoryError) throw inventoryError;
+
+        // Create a map for quick lookup
+        const inventoryMap: Record<number, InventoryItem> = {};
+        if (inventoryData) {
+          inventoryData.forEach((item: any) => {
+            inventoryMap[item.id] = item;
+          });
+        }
+
+        // Combine the data
+        let combinedData = data.map(log => ({
+          ...log,
+          inventory_item: inventoryMap[log.inventory_item_id] || null
+        }));
 
         // Apply job type filter
         if (jobTypeFilter !== 'all') {
-          filteredData = filteredData.filter(log => log.job_type === jobTypeFilter);
+          combinedData = combinedData.filter(log => log.job_type === jobTypeFilter);
         }
 
         // Apply material filter
         if (materialFilter !== 'all') {
-          filteredData = filteredData.filter(log =>
+          combinedData = combinedData.filter(log =>
             log.inventory_item?.item === materialFilter ||
             String(log.inventory_item_id) === materialFilter
           );
         }
 
-        setMaterialUsage(filteredData);
+        setMaterialUsage(combinedData);
+      } else {
+        setMaterialUsage([]);
       }
     } catch (err) {
       console.error("Failed to load material usage:", err);
+      // Don't set error here to avoid breaking the UI
+      setMaterialUsage([]);
     }
   };
 

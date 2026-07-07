@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import {
-  Package, MapPin, Phone, CheckCircle, RefreshCw, FileText,
+  Package, CheckCircle, RefreshCw, FileText,
   Save, X, Calendar, User, DollarSign, Send, AlertCircle
 } from "lucide-react";
 import { supabase, api } from "../server/api";
@@ -76,7 +76,7 @@ export function DispatchDashboard() {
     setError(null);
     try {
       const productionJobs = await api.getProductionJobs();
-      const readyJobs = productionJobs.filter(job => job.status === "Completed");
+      const readyJobs = productionJobs.filter(job => job.status === "Packaged");
       const dispatchedJobs = productionJobs.filter(job => job.status === "Dispatched");
 
       const customersData = await api.getCustomers();
@@ -85,10 +85,10 @@ export function DispatchDashboard() {
       const dispatchOrders: DispatchOrder[] = readyJobs.map(job => ({
         id: job.id,
         client: job.customer,
-        address: "Mumbai, Maharashtra",
-        items: `${job.product} (${job.quantity} pcs)`,
-        contact: "Rajesh Kumar",
-        phone: "+91-9876543210",
+        address: "",
+        items: `${job.product} (${job.quantity.toLocaleString()} pcs)`,
+        contact: "",
+        phone: "",
         scheduledTime: new Date(job.dueDate).toLocaleDateString(),
         quotationId: job.quotationId,
         value: job.value || 0,
@@ -544,10 +544,7 @@ export function DispatchDashboard() {
                     </div>
                     <span className="text-xs text-slate-400 flex-shrink-0">Due: {order.scheduledTime}</span>
                   </div>
-                  <div className="grid grid-cols-1 gap-2 text-xs text-slate-500 mb-4">
-                    <span className="flex items-center gap-1.5"><MapPin size={12} /> <span className="truncate">{order.address}</span></span>
-                    <span className="flex items-center gap-1.5"><Phone size={12} /> {order.contact} ({order.phone})</span>
-                  </div>
+
                   <button
                     onClick={() => handleDispatchClick(order)}
                     disabled={processingId === order.id}

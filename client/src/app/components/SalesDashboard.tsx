@@ -263,10 +263,8 @@ export function SalesDashboard() {
   // ── Trigger loads ────────────────────────────────────────────
   useEffect(() => {
     if (!initialized) return;
-    if (isAdmin || empId !== null) {
-      loadKPIs();
-      loadCharts();
-    }
+    loadKPIs();
+    loadCharts();
   }, [initialized, empId, isAdmin, selectedExecId]);
 
   const handleRefresh = () => {
@@ -405,11 +403,15 @@ export function SalesDashboard() {
         </div>
       </div>
 
-      {/* ── KPI Cards ───────────────────────────────────────── */}
-      {loadingKPIs ? (
-        <div className="h-32 flex items-center justify-center"><Spinner /></div>
+      {/* ── Dashboard Content ───────────────────────────────── */}
+      {loadingKPIs || loadingCharts ? (
+        <div className="h-96 flex flex-col items-center justify-center gap-3">
+          <Spinner />
+          <p className="text-sm text-slate-500">Loading Dashboard Data...</p>
+        </div>
       ) : (
-        <>
+        <div className="space-y-5">
+          {/* ── KPI Cards ───────────────────────────────────────── */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <KPICard
               title="Invoice Revenue"
@@ -480,8 +482,6 @@ export function SalesDashboard() {
               border="border-purple-100"
             />
           </div>
-        </>
-      )}
 
       {/* ── Payment Collection Banner ────────────────────────── */}
       {!loadingKPIs && (kpis.advance_collected > 0 || kpis.invoice_collected > 0) && (
@@ -1030,6 +1030,8 @@ export function SalesDashboard() {
               </table>
             </div>
           )}
+        </div>
+      )}
         </div>
       )}
     </div>

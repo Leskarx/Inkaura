@@ -1,686 +1,474 @@
-import React, { useState, useEffect } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
-import { QuotationViewModal } from "../components/QuotationViewModal";
-import { JobSlipModal } from "./JobSlipModal"; // Import the new modal
-import {
-  Search, Plus, Calendar, User, Clock, CheckCircle, X,
-  FileText, Eye, RefreshCw, AlertTriangle, FlaskConical, Factory,
-  Wrench, Settings, Edit, Printer, Save
-} from "lucide-react";
-import {
-  api,
-  SampleJob,
-  SampleStatus,
-  Priority,
-  supabase
-} from "../server/api";
+// JobSlipModal.tsx — Digital Factory Job Slip (Premium Redesign)
+// Renders: Paper Issue Slip + Job Details to Machine Man + Post Press Division
+import { useState, useEffect, useRef } from "react";
+import { X, Printer, Loader2, Factory, User, Calendar, ClipboardList } from "lucide-react";
+import { supabase } from "../server/api";
 
-// ... (all the statusConfig, interfaces, etc. remain the same)
+interface SlipData {
+  job_id: string;
+  job_type: "sample" | "production";
+  product_name: string;
+  customer_name: string;
+  quantity: number;
+  due_date: string;
+  machine_name?: string;
+  operator_name?: string;
 
-export function SampleJobs() {
-  const location = useLocation();
-  const navigate = useNavigate();
-  const [sampleJobs, setSampleJobs] = useState<SampleJob[]>([]);
+  supervisor_to?: string;
+  machine_man_to?: string;
+  job_size?: string;
+  inside_pages?: number;
+  copies?: number;
+  total_forms?: number;
+  polymaster_plates?: number;
+  plate_size?: string;
+  inside_colors?: number;
+  inside_color_names?: string;
+  cover_colors?: number;
+  cover_color_names?: string;
+  inside_paper_name?: string;
+  inside_total_sheets?: number;
+  inside_additional_sheets?: number;
+  cover_paper_name?: string;
+  cover_total_sheets?: number;
+  cover_additional_sheets?: number;
+  boards_sheets?: number;
+  cover_paper_sheets?: number;
+  post_press_notes?: string;
+
+  paper_gsm?: number;
+  paper_type?: string;
+  front_colors?: number;
+  back_colors?: number;
+  special_instructions?: string;
+}
+
+interface JobSlipModalProps {
+  jobId: string;
+  jobType: "sample" | "production";
+  quotationId: string;
+  customerName: string;
+  productName: string;
+  quantity: number;
+  dueDate: string;
+  machineName?: string;
+  operatorName?: string;
+  onClose: () => void;
+}
+
+export function JobSlipModal({
+  jobId,
+  jobType,
+  quotationId,
+  customerName,
+  productName,
+  quantity,
+  dueDate,
+  machineName,
+  operatorName,
+  onClose,
+}: JobSlipModalProps) {
+  const [slip, setSlip] = useState<SlipData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"All" | SampleStatus>("All");
-  const [selectedSample, setSelectedSample] = useState<SampleJob | null>(null);
-  const [showRejectModal, setShowRejectModal] = useState(false);
-  const [rejectionReason, setRejectionReason] = useState("");
-  const [creating, setCreating] = useState(false);
-  const [processingId, setProcessingId] = useState<string | null>(null);
+  const [slipNo] = useState(
+    Math.floor(2000 + Math.random() * 1000).toString()
+  );
+  const printRef = useRef<HTMLDivElement>(null);
 
-  // State for Assign/Edit Machine Modal
-  const [showAssignModal, setShowAssignModal] = useState(false);
-  const [assignSample, setAssignSample] = useState<SampleJob | null>(null);
-  const [assignForm, setAssignForm] = useState({
-    machineId: 0,
-    operatorId: 0,
-  });
-  const [isEditing, setIsEditing] = useState(false);
+  useEffect(() => {
+    fetchSlipData();
+  }, [quotationId]);
 
-  // State for dropdowns
-  const [employees, setEmployees] = useState<{ id: number; name: string; role: string }[]>([]);
-  const [machines, setMachines] = useState<{ id: number; name: string; type: string; status: string }[]>([]);
-  const [loadingDropdowns, setLoadingDropdowns] = useState(false);
-
-  // State for Quotation View Modal
-  const [showQuotationView, setShowQuotationView] = useState(false);
-  const [viewQuotationId, setViewQuotationId] = useState<string | null>(null);
-
-  // State for Job Slip Modal
-  const [showJobSlip, setShowJobSlip] = useState(false);
-  const [jobSlipData, setJobSlipData] = useState<{
-    jobId: string;
-    jobType: "sample" | "production";
-    quotationId: string;
-    customerName: string;
-    productName: string;
-    quantity: number;
-    dueDate: string;
-    machineName?: string;
-    operatorName?: string;
-  } | null>(null);
-
-  // Load sample jobs
-  const loadSampleJobs = async () => {
+  const fetchSlipData = async () => {
+    setLoading(true);
     try {
-      setLoading(true);
-      setError(null);
-      const data = await api.getSampleJobs();
-      setSampleJobs(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load sample jobs');
+      const { data, error } = await supabase
+        .from("quotation_products")
+        .select("*")
+        .eq("quotation_id", quotationId)
+        .limit(1)
+        .single();
+
+      const base: SlipData = {
+        job_id: jobId,
+        job_type: jobType,
+        product_name: productName,
+        customer_name: customerName,
+        quantity,
+        due_date: dueDate,
+        machine_name: machineName,
+        operator_name: operatorName,
+      };
+
+      if (!error && data) {
+        // Machine man: prioritize the actual assigned operator from the job
+        const resolvedMachineMan = operatorName && operatorName !== "Unassigned"
+          ? operatorName
+          : data.machine_man_to || "";
+
+        setSlip({
+          ...base,
+          supervisor_to: data.supervisor_to || "",
+          machine_man_to: resolvedMachineMan,
+          job_size: data.job_size || "",
+          inside_pages: data.inside_pages ?? 0,
+          copies: data.copies ?? data.production_quantity ?? quantity,
+          total_forms: data.total_forms ?? 0,
+          polymaster_plates: data.polymaster_plates ?? 0,
+          plate_size: data.plate_size || "",
+          inside_colors: data.inside_colors ?? data.front_colors ?? 4,
+          inside_color_names: data.inside_color_names || "",
+          cover_colors: data.cover_colors ?? data.back_colors ?? 0,
+          cover_color_names: data.cover_color_names || "",
+          inside_paper_name:
+            data.inside_paper_name ||
+            (data.paper_type
+              ? `${data.paper_type}${data.paper_gsm ? ` ${data.paper_gsm}gsm` : ""}`
+              : ""),
+          inside_total_sheets: data.inside_total_sheets ?? 0,
+          inside_additional_sheets: data.inside_additional_sheets ?? 0,
+          cover_paper_name: data.cover_paper_name || "",
+          cover_total_sheets: data.cover_total_sheets ?? 0,
+          cover_additional_sheets: data.cover_additional_sheets ?? 0,
+          boards_sheets: data.boards_sheets ?? 0,
+          cover_paper_sheets: data.cover_paper_sheets ?? 0,
+          post_press_notes:
+            data.post_press_notes || data.special_instructions || "",
+          paper_gsm: data.paper_gsm,
+          paper_type: data.paper_type,
+          front_colors: data.front_colors,
+          back_colors: data.back_colors,
+          special_instructions: data.special_instructions,
+        });
+      } else {
+        setSlip({
+          ...base,
+          machine_man_to: operatorName && operatorName !== "Unassigned" ? operatorName : "",
+        });
+      }
+    } catch {
+      setSlip({
+        job_id: jobId,
+        job_type: jobType,
+        product_name: productName,
+        customer_name: customerName,
+        quantity,
+        due_date: dueDate,
+        machine_name: machineName,
+        operator_name: operatorName,
+        machine_man_to: operatorName && operatorName !== "Unassigned" ? operatorName : "",
+      });
     } finally {
       setLoading(false);
     }
   };
 
-  // Load dropdown data
-  const loadDropdownData = async () => {
-    try {
-      setLoadingDropdowns(true);
-      const [employeesData, machinesData] = await Promise.all([
-        api.getEmployees(),
-        api.getMachines(),
-      ]);
-      setEmployees(employeesData);
-      setMachines(machinesData);
-    } catch (err) {
-      console.warn('Failed to load dropdown data:', err);
-    } finally {
-      setLoadingDropdowns(false);
-    }
+  const handlePrint = () => {
+    if (!printRef.current) return;
+    const win = window.open("", "_blank", "width=900,height=1100");
+    if (!win) return;
+    const content = printRef.current.innerHTML;
+    win.document.write(`
+      <!DOCTYPE html><html><head>
+        <title>Job Slip – ${jobId}</title>
+        <style>
+          * { box-sizing: border-box; margin: 0; padding: 0; }
+          body { font-family: Arial, sans-serif; font-size: 11px; background: white; padding: 12px; }
+          .slip-wrapper { max-width: 780px; margin: 0 auto; }
+          .section { border: 1.5px solid #000; margin-bottom: 0; page-break-inside: avoid; }
+          .section + .section { border-top: none; }
+          .section-header { background: #000; color: #fff; text-align: center; font-weight: bold; font-size: 11px; padding: 4px; text-transform: uppercase; letter-spacing: 1px; }
+          .section-body { padding: 8px 10px; }
+          .row { display: flex; align-items: flex-end; gap: 4px; margin-bottom: 7px; }
+          .row .label { white-space: nowrap; font-size: 10px; }
+          .row .line { flex: 1; border-bottom: 1px solid #000; min-width: 40px; padding-bottom: 1px; font-size: 10px; }
+          .row .line.bold { font-weight: bold; }
+          .divider { border-top: 1px dashed #000; margin: 8px 0; }
+          .top-row { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 8px; }
+          .slno { font-size: 18px; font-weight: bold; }
+          .colour-row { display: flex; align-items: center; gap: 6px; margin-bottom: 7px; font-size: 10px; }
+          .colour-options { font-weight: bold; font-size: 11px; }
+          .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 7px; }
+          @media print { body { padding: 4px; } .section { page-break-inside: avoid; } }
+        </style>
+      </head><body>
+        <div class="slip-wrapper">${content}</div>
+        <script>window.onload = () => window.print();<\/script>
+      </body></html>
+    `);
+    win.document.close();
   };
 
-  useEffect(() => {
-    loadSampleJobs();
-    loadDropdownData();
-  }, []);
+  const today = new Date().toLocaleDateString("en-IN");
 
-  const filtered = sampleJobs.filter((job) => {
-    // Hide "Production Created" entirely
-    if (job.status === "Production Created") {
-      return false;
-    }
+  // ── Field row for the print-view layout ──
+  const Field = ({
+    label,
+    value,
+    flex,
+    bold,
+  }: {
+    label: string;
+    value?: string | number;
+    flex?: number;
+    bold?: boolean;
+  }) => (
+    <div className={`flex items-end gap-1 ${flex ? "" : "flex-1"}`} style={flex ? { flex } : {}}>
+      <span className="text-[10px] whitespace-nowrap text-gray-700 leading-tight font-medium">
+        {label}
+      </span>
+      <span
+        className={`border-b border-gray-800 flex-1 text-[10px] pb-0.5 min-w-[40px] ${bold ? "font-bold" : ""}`}
+      >
+        {value ?? ""}
+      </span>
+    </div>
+  );
 
-    const matchesSearch = job.id.toLowerCase().includes(search.toLowerCase()) ||
-      job.customer.toLowerCase().includes(search.toLowerCase()) ||
-      job.product.toLowerCase().includes(search.toLowerCase()) ||
-      job.quotationId.toLowerCase().includes(search.toLowerCase());
-    const matchesStatus = statusFilter === "All" || job.status === statusFilter;
-    return matchesSearch && matchesStatus;
-  });
-
-  const activeJobs = sampleJobs.filter(j => j.status !== "Production Created");
-
-  const statusCounts = {
-    All: activeJobs.length,
-    Pending: activeJobs.filter(j => j.status === "Pending").length,
-    "QC Pending": activeJobs.filter(j => j.status === "QC Pending").length,
-    "In Progress": activeJobs.filter(j => j.status === "In Progress").length,
-    "Awaiting Approval": activeJobs.filter(j => j.status === "Awaiting Approval").length,
-    Approved: activeJobs.filter(j => j.status === "Approved").length,
-    Rejected: activeJobs.filter(j => j.status === "Rejected").length,
-  };
-
-  // Open Assign Modal for new assignment
-  const handleOpenAssign = (job: SampleJob) => {
-    setAssignSample(job);
-    setAssignForm({
-      machineId: 0,
-      operatorId: 0,
-    });
-    setIsEditing(false);
-    setShowAssignModal(true);
-  };
-
-  // Open Edit Modal for existing assignment
-  const handleOpenEdit = (job: SampleJob) => {
-    setAssignSample(job);
-    setAssignForm({
-      machineId: 0,
-      operatorId: 0,
-    });
-    setIsEditing(true);
-    setShowAssignModal(true);
-  };
-
-  // Handle Assign/Edit Machine and Operator
-  const handleAssign = async () => {
-    if (!assignSample) {
-      console.error('No sample selected for assignment');
-      alert("No sample selected");
-      return;
-    }
-
-    console.log('Assign Sample:', assignSample);
-    console.log('Assign Form:', assignForm);
-
-    if (assignForm.machineId === 0) {
-      alert("Please select a machine");
-      return;
-    }
-    if (assignForm.operatorId === 0) {
-      alert("Please select an operator");
-      return;
-    }
-
-    try {
-      setCreating(true);
-
-      const updateData = {
-        machine_id: assignForm.machineId,
-        assigned_to: assignForm.operatorId,
-        status: 'In Progress'
-      };
-
-      console.log('Updating with data:', updateData);
-      console.log('Where sample_order_id =', assignSample.id);
-
-      const { data, error: updateError } = await supabase
-        .from('sample_orders')
-        .update(updateData)
-        .eq('sample_order_id', assignSample.id)
-        .select();
-
-      if (updateError) {
-        console.error('Update error:', updateError);
-        throw updateError;
-      }
-
-      console.log('Update successful, returned data:', data);
-
-      await loadSampleJobs();
-      setShowAssignModal(false);
-      setAssignSample(null);
-      alert(isEditing ? "Assignment updated successfully!" : "Machine and Operator assigned successfully!");
-    } catch (err) {
-      console.error('Failed to assign:', err);
-      const errorMessage = err instanceof Error ? err.message : 'Failed to assign machine and operator';
-      setError(errorMessage);
-      alert(`Error: ${errorMessage}`);
-    } finally {
-      setCreating(false);
-    }
-  };
-
-  // Approve sample
-  const handleApprove = async (job: SampleJob) => {
-    try {
-      setProcessingId(job.id);
-      await api.approveSample(job.id);
-      await loadSampleJobs();
-      alert("✅ Sample approved successfully! Sales person can now send to production from Quotation page.");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to approve sample');
-    } finally {
-      setProcessingId(null);
-    }
-  };
-
-  // Reject sample
-  const handleReject = async () => {
-    if (!selectedSample || !rejectionReason.trim()) return;
-
-    try {
-      setCreating(true);
-      await api.rejectSample(selectedSample.id, rejectionReason);
-      await loadSampleJobs();
-      setShowRejectModal(false);
-      setRejectionReason("");
-      setSelectedSample(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to reject sample');
-    } finally {
-      setCreating(false);
-    }
-  };
-
-  // Open Job Slip Modal
-  const handleOpenJobSlip = (job: SampleJob) => {
-    setJobSlipData({
-      jobId: job.id,
-      jobType: "sample",
-      quotationId: job.quotationId,
-      customerName: job.customer,
-      productName: job.product,
-      quantity: job.sampleQuantity,
-      dueDate: job.dueDate,
-      machineName: job.machineName || "Sample",
-      operatorName: job.assignedTo || "Unassigned",
-    });
-    setShowJobSlip(true);
-  };
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" />
-          <p className="text-sm text-slate-500">Loading sample jobs...</p>
-        </div>
-      </div>
-    );
-  }
+  const isProduction = jobType === "production";
 
   return (
-    <div className="p-6 space-y-6">
-      {/* Job Slip Modal */}
-      {showJobSlip && jobSlipData && (
-        <JobSlipModal
-          jobId={jobSlipData.jobId}
-          jobType={jobSlipData.jobType}
-          quotationId={jobSlipData.quotationId}
-          customerName={jobSlipData.customerName}
-          productName={jobSlipData.productName}
-          quantity={jobSlipData.quantity}
-          dueDate={jobSlipData.dueDate}
-          machineName={jobSlipData.machineName}
-          operatorName={jobSlipData.operatorName}
-          onClose={() => {
-            setShowJobSlip(false);
-            setJobSlipData(null);
-          }}
-        />
-      )}
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-3">
+      <div className="bg-white rounded-2xl w-full max-w-3xl max-h-[95vh] overflow-hidden shadow-2xl flex flex-col border border-slate-200">
 
-      {/* Assign/Edit Machine/Operator Modal */}
-      {showAssignModal && assignSample && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-6 max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
-                {isEditing ? (
-                  <Edit size={18} className="text-indigo-600" />
-                ) : (
-                  <Settings size={18} className="text-indigo-600" />
-                )}
-                {isEditing ? "Edit Assignment" : "Assign Machine & Operator"}
-              </h3>
-              <button onClick={() => setShowAssignModal(false)} className="text-slate-400 hover:text-slate-600">
-                <X size={20} />
-              </button>
+        {/* ── Modal Header ─────────────────────────────────────── */}
+        <div className="bg-gradient-to-r from-slate-900 to-slate-800 px-5 py-3 flex items-center justify-between flex-shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-white/10 border border-white/20 flex items-center justify-center">
+              <Printer size={17} className="text-white" />
             </div>
-
-            <p className="text-sm text-slate-500 mb-4">
-              {isEditing ? "Update machine and operator for" : "Assign machine and operator for"} <span className="font-semibold text-slate-700">{assignSample.id}</span>
-            </p>
-
-            <div className="bg-slate-50 rounded-lg p-3 mb-4 space-y-1">
-              <p className="text-xs text-slate-500">Product</p>
-              <p className="text-sm font-medium text-slate-900">{assignSample.product}</p>
-              <p className="text-xs text-slate-500 mt-1">Customer</p>
-              <p className="text-sm font-medium text-slate-900">{assignSample.customer}</p>
-              <p className="text-xs text-slate-500 mt-1">Quantity</p>
-              <p className="text-sm font-medium text-slate-900">{assignSample.sampleQuantity} pieces</p>
-              <p className="text-xs text-slate-500 mt-1">Current Status</p>
-              <p className="text-sm font-medium text-slate-900">{assignSample.status}</p>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <label className="text-xs text-slate-500 block mb-1">Machine *</label>
-                <select
-                  value={assignForm.machineId}
-                  onChange={(e) => setAssignForm({ ...assignForm, machineId: parseInt(e.target.value) })}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400"
-                >
-                  <option value="0">Select Machine</option>
-                  {machines
-                    .filter(m => m.status === 'Active' || m.status === 'Setup')
-                    .map((machine) => (
-                      <option key={machine.id} value={machine.id}>
-                        {machine.name} {machine.type ? `(${machine.type})` : ''}
-                      </option>
-                    ))}
-                </select>
+            <div>
+              <h2 className="text-sm font-bold text-white">Factory Job Slip</h2>
+              <div className="flex items-center gap-2 mt-0.5">
+                <span className="text-xs text-slate-400">{jobId}</span>
+                <span className="w-1 h-1 rounded-full bg-slate-600" />
+                <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${isProduction ? "bg-emerald-500/20 text-emerald-300" : "bg-amber-500/20 text-amber-300"}`}>
+                  {isProduction ? "Production" : "Sample"}
+                </span>
               </div>
-
-              <div>
-                <label className="text-xs text-slate-500 block mb-1">Operator *</label>
-                <select
-                  value={assignForm.operatorId}
-                  onChange={(e) => setAssignForm({ ...assignForm, operatorId: parseInt(e.target.value) })}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400"
-                >
-                  <option value="0">Select Operator</option>
-                  {employees.map((employee) => (
-                    <option key={employee.id} value={employee.id}>
-                      {employee.name} {employee.role ? `(${employee.role})` : ''}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <div className="flex gap-2 pt-4 mt-4 border-t border-slate-100">
-              <button
-                onClick={handleAssign}
-                disabled={creating || loadingDropdowns}
-                className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              >
-                {creating ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    Saving...
-                  </>
-                ) : (
-                  isEditing ? 'Update Assignment' : 'Assign Machine & Operator'
-                )}
-              </button>
-              <button
-                onClick={() => setShowAssignModal(false)}
-                className="px-4 py-2 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 transition-colors text-sm font-medium"
-              >
-                Cancel
-              </button>
             </div>
           </div>
-        </div>
-      )}
-
-      {/* Error toast */}
-      {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-center gap-2">
-          <AlertTriangle size={16} className="text-red-500 flex-shrink-0" />
-          <p className="text-sm text-red-600 flex-1">{error}</p>
-          <button onClick={() => setError(null)} className="text-red-500 hover:text-red-700">
-            <X size={14} />
-          </button>
-        </div>
-      )}
-
-      {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-slate-900 text-xl font-bold">Sample Jobs</h1>
-          <p className="text-slate-500 text-sm mt-0.5">
-            {sampleJobs.filter(j => j.status === "Awaiting Approval").length} awaiting approval ·
-            {sampleJobs.filter(j => j.status === "In Progress").length} in production ·
-            {sampleJobs.filter(j => j.status !== "Production Created").length} active
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={loadSampleJobs}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors font-medium"
-            disabled={loading}
-          >
-            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Refresh
-          </button>
-        </div>
-      </div>
-
-      {/* Status Filters */}
-      <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-4">
-        {Object.entries(statusCounts).map(([key, count]) => {
-          const label = key === "All" ? "All Samples" : key;
-          const active = statusFilter === key;
-          const conf = key !== "All" ? statusConfig[key as SampleStatus] : null;
-          return (
+          <div className="flex items-center gap-2">
             <button
-              key={key}
-              onClick={() => setStatusFilter(key as any)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs border transition-all ${active
-                ? "bg-indigo-600 text-white border-indigo-600"
-                : "bg-white text-slate-600 border-slate-200 hover:border-slate-300"
-                }`}
-              style={{ fontWeight: active ? 600 : 400 }}
+              onClick={handlePrint}
+              disabled={loading}
+              className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold bg-white text-slate-900 rounded-lg hover:bg-slate-100 transition-colors disabled:opacity-50 shadow-sm"
             >
-              {conf && !active && <span className={conf.text}>{conf.icon}</span>}
-              {label}
-              <span className={`px-1.5 rounded-full text-xs ${active ? "bg-white/20 text-white" : "bg-slate-100 text-slate-500"}`} style={{ fontWeight: 600 }}>
-                {count}
-              </span>
+              <Printer size={14} /> Print
             </button>
-          );
-        })}
-
-        <div className="flex-1" />
-        <div className="relative">
-          <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search samples..."
-            className="pl-8 pr-3 py-1.5 text-xs border border-slate-200 rounded-lg w-44 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400"
-          />
-        </div>
-      </div>
-
-      {/* Sample Cards */}
-      {filtered.length === 0 ? (
-        <div className="text-center py-12">
-          <div className="text-slate-400 mb-2">
-            <FileText size={48} className="mx-auto" />
+            <button
+              onClick={onClose}
+              className="w-8 h-8 rounded-lg flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 transition-colors"
+            >
+              <X size={18} />
+            </button>
           </div>
-          <p className="text-slate-500 text-sm">No sample jobs found</p>
-          <p className="text-slate-400 text-xs mt-1">Try adjusting your search or filters</p>
         </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {filtered.map((job) => {
-            const conf = statusConfig[job.status] || defaultStatusConfig;
 
-            const isAwaitingApproval = job.status === "Awaiting Approval";
-            const isApproved = job.status === "Approved";
-            const isRejected = job.status === "Rejected";
-            const isPending = job.status === "Pending";
-            const isInProgress = job.status === "In Progress";
-            const isQCPending = job.status === "QC Pending";
-            const isProcessing = processingId === job.id;
-
-            return (
-              <div key={job.id} className="bg-white border border-slate-200 rounded-xl p-5 hover:shadow-md transition-all">
-                <div className="flex items-start justify-between gap-2 mb-3">
-                  <div>
-                    <div className="flex items-center gap-2 mb-1">
-                      <p className="text-indigo-600 text-xs font-bold">{job.id}</p>
-                      <span className="text-xs text-slate-400">|</span>
-                      <p className="text-slate-500 text-xs">{job.quotationId}</p>
-                      {job.productionJobId && (
-                        <>
-                          <span className="text-xs text-slate-400">|</span>
-                          <span className="text-xs text-green-600 bg-green-50 px-1.5 py-0.5 rounded">
-                            → {job.productionJobId}
-                          </span>
-                        </>
-                      )}
-                    </div>
-                    <p className="text-slate-900 text-sm font-semibold leading-snug">{job.product}</p>
-                    <p className="text-slate-500 text-xs mt-0.5">{job.customer}</p>
-                  </div>
-                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs border flex-shrink-0 ${conf.bg} ${conf.text} ${conf.border}`} style={{ fontWeight: 500 }}>
-                    {conf.icon} {conf.label}
-                  </span>
+        {/* ── Meta Info Bar ─────────────────────────────────────── */}
+        {!loading && slip && (
+          <div className="bg-slate-50 border-b border-slate-200 px-5 py-2.5 flex items-center gap-4 flex-shrink-0">
+            <div className="flex items-center gap-1.5 text-xs text-slate-600">
+              <User size={11} className="text-slate-400" />
+              <span className="font-medium">{slip.customer_name}</span>
+            </div>
+            <div className="w-px h-3 bg-slate-300" />
+            <div className="flex items-center gap-1.5 text-xs text-slate-600">
+              <ClipboardList size={11} className="text-slate-400" />
+              <span>{slip.product_name}</span>
+            </div>
+            <div className="w-px h-3 bg-slate-300" />
+            <div className="flex items-center gap-1.5 text-xs text-slate-600">
+              <Calendar size={11} className="text-slate-400" />
+              <span>Due: {new Date(slip.due_date).toLocaleDateString()}</span>
+            </div>
+            {slip.machine_name && slip.machine_name !== "Unassigned" && (
+              <>
+                <div className="w-px h-3 bg-slate-300" />
+                <div className="flex items-center gap-1.5 text-xs text-slate-600">
+                  <Factory size={11} className="text-slate-400" />
+                  <span>{slip.machine_name}</span>
                 </div>
+              </>
+            )}
+            <div className="ml-auto text-xs text-slate-400">
+              Slip #{slipNo}
+            </div>
+          </div>
+        )}
 
-                <div className="grid grid-cols-2 gap-3 mb-4">
-                  <div className="bg-slate-50 rounded-lg p-2">
-                    <p className="text-[10px] text-slate-500 uppercase tracking-wide">Quantity</p>
-                    <p className="text-sm text-slate-900 font-semibold">{job.sampleQuantity} pieces</p>
-                  </div>
-                  <div className="bg-slate-50 rounded-lg p-2">
-                    <p className="text-[10px] text-slate-500 uppercase tracking-wide">Sample Cost</p>
-                    <p className="text-sm text-slate-900 font-semibold">₹{job.sampleCost.toLocaleString()}</p>
-                  </div>
-                  <div className="bg-slate-50 rounded-lg p-2">
-                    <p className="text-[10px] text-slate-500 uppercase tracking-wide">Assigned To</p>
-                    <div className="flex items-center gap-1">
-                      <User size={12} className="text-slate-400" />
-                      <p className="text-xs text-slate-700 font-medium">{job.assignedTo}</p>
-                    </div>
-                  </div>
-                  <div className="bg-slate-50 rounded-lg p-2">
-                    <p className="text-[10px] text-slate-500 uppercase tracking-wide">Due Date</p>
-                    <div className="flex items-center gap-1">
-                      <Calendar size={12} className="text-slate-400" />
-                      <p className="text-xs text-slate-700 font-medium">{new Date(job.dueDate).toLocaleDateString()}</p>
-                    </div>
-                  </div>
+        {/* ── Slip Body ─────────────────────────────────────────── */}
+        {loading ? (
+          <div className="flex-1 flex items-center justify-center py-16 gap-3">
+            <Loader2 size={22} className="animate-spin text-slate-400" />
+            <span className="text-sm text-slate-500">Loading slip data…</span>
+          </div>
+        ) : (
+          <div className="flex-1 overflow-y-auto">
+            <div className="p-5 font-mono text-xs" ref={printRef}>
+
+              {/* ══ SECTION 1 — PAPER ISSUE SLIP TO FACTORY SUPERVISOR ══ */}
+              <div className="border-2 border-gray-900 rounded-t-sm overflow-hidden mb-0">
+                <div className="bg-gray-900 text-white text-center font-bold text-[11px] py-2 tracking-widest uppercase">
+                  Paper Issue Slip to Factory Supervisor
                 </div>
-
-                {isRejected && job.rejectionReason && (
-                  <div className="bg-red-50 border border-red-200 rounded-lg p-2 mb-3">
-                    <p className="text-xs text-red-600">
-                      <span className="font-semibold">Rejection Reason:</span> {job.rejectionReason}
-                    </p>
+                <div className="p-4 space-y-2.5 bg-white">
+                  {/* To + Sl.no */}
+                  <div className="flex items-end gap-4">
+                    <Field label="To" value={slip?.supervisor_to} flex={2} bold />
+                    <div className="flex items-end gap-1.5 flex-shrink-0">
+                      <span className="text-[10px] text-gray-600">Sl.no.</span>
+                      <span className="font-black text-xl leading-tight text-gray-900 border-b-2 border-gray-800 px-3">{slipNo}</span>
+                    </div>
                   </div>
-                )}
+                  {/* Date */}
+                  <div className="flex items-end gap-2">
+                    <span className="text-[10px] text-gray-600 whitespace-nowrap font-medium">Date :</span>
+                    <span className="border-b border-gray-800 flex-1 text-[10px] pb-0.5 font-medium">{today}</span>
+                  </div>
 
-                {/* Action Buttons */}
-                <div className="flex items-center gap-2 flex-wrap">
-                  {isPending && (
-                    <button
-                      onClick={() => handleOpenAssign(job)}
-                      className="flex-1 flex items-center justify-center gap-1 px-3 py-2 text-xs bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition-colors font-medium"
-                    >
-                      <Wrench size={14} /> Assign Machine
-                    </button>
-                  )}
+                  <div className="border-t border-dashed border-gray-300 my-2" />
 
-                  {isInProgress && (
-                    <button
-                      onClick={() => handleOpenEdit(job)}
-                      className="flex-1 flex items-center justify-center gap-1 px-3 py-2 text-xs bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors font-medium"
-                    >
-                      <Edit size={14} /> Edit Assignment
-                    </button>
-                  )}
+                  <Field label="Name of the Job :" value={slip?.product_name} bold />
+                  <Field label="Party Name :" value={slip?.customer_name} />
+                  <Field label="Name of Inside used Paper :" value={slip?.inside_paper_name} />
 
-                  {isQCPending && (
-                    <div className="w-full text-center py-2 px-3 rounded-lg text-xs bg-orange-50 text-orange-700 border border-orange-200">
-                      Waiting for QC Inspection
-                    </div>
-                  )}
+                  <div className="flex items-end gap-3">
+                    <Field label="No. Of Total Sheets :" value={slip?.inside_total_sheets || ""} flex={2} />
+                    <Field label="Additional" value={slip?.inside_additional_sheets || ""} flex={1} />
+                  </div>
 
-                  {/* Job Slip Button - Shows for In Progress jobs */}
-                  {isInProgress && (
-                    <button
-                      onClick={() => handleOpenJobSlip(job)}
-                      className="flex-1 flex items-center justify-center gap-1 px-3 py-2 text-xs bg-slate-900 text-white rounded-lg hover:bg-slate-700 transition-colors font-medium"
-                      title="Job Slip"
-                    >
-                      <Printer size={13} /> Job Slip
-                    </button>
-                  )}
+                  <Field label="Name of Paper for Cover Pages :" value={slip?.cover_paper_name} />
 
-                  {/* View Quote Button */}
-                  <button
-                    onClick={() => {
-                      setViewQuotationId(job.quotationId);
-                      setShowQuotationView(true);
-                    }}
-                    className="flex-1 flex items-center justify-center gap-1 px-3 py-2 text-xs bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 transition-colors font-medium"
-                  >
-                    <Eye size={14} /> View Quote
-                  </button>
+                  <div className="flex items-end gap-3">
+                    <Field label="No. Of Total Sheets :" value={slip?.cover_total_sheets || ""} flex={2} />
+                    <Field label="Additional" value={slip?.cover_additional_sheets || ""} flex={1} />
+                  </div>
 
-                  {isAwaitingApproval ? (
-                    <>
-                      <button
-                        onClick={() => handleApprove(job)}
-                        disabled={isProcessing}
-                        className="flex-1 flex items-center justify-center gap-1 px-3 py-2 text-xs bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        {isProcessing ? (
-                          <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                        ) : (
-                          <CheckCircle size={14} />
-                        )}
-                        Approve
-                      </button>
-                      <button
-                        onClick={() => {
-                          setSelectedSample(job);
-                          setShowRejectModal(true);
-                        }}
-                        disabled={isProcessing}
-                        className="flex-1 flex items-center justify-center gap-1 px-3 py-2 text-xs bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        <X size={14} /> Reject
-                      </button>
-                    </>
-                  ) : isApproved ? (
-                    <div className="w-full text-center py-2 px-3 rounded-lg text-xs bg-green-50 text-green-700 border border-green-200">
-                      ✅ Sample Approved - Ready for Production
-                    </div>
-                  ) : isRejected ? (
-                    <div className="w-full text-center py-2 px-3 rounded-lg text-xs bg-red-50 text-red-700 border border-red-200">
-                      ❌ Rejected
-                    </div>
-                  ) : null}
+                  <div className="flex items-end gap-3">
+                    <Field label="Boards" value={slip?.boards_sheets || ""} flex={1} />
+                    <span className="text-[10px] text-gray-600 font-medium">Sheets</span>
+                    <Field label="Cover Paper" value={slip?.cover_paper_sheets || ""} flex={1} />
+                    <span className="text-[10px] text-gray-600 font-medium">Sheets</span>
+                  </div>
                 </div>
               </div>
-            );
-          })}
-        </div>
-      )}
 
-      {/* Reject Modal */}
-      {showRejectModal && selectedSample && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-6 max-w-md w-full mx-4">
-            <h3 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
-              <X size={18} className="text-red-500" /> Reject Sample
-            </h3>
-            <p className="text-sm text-slate-500 mb-4">
-              Reject sample <span className="font-semibold text-slate-700">{selectedSample.id}</span>
-            </p>
+              {/* ══ SECTION 2 — JOB DETAILS TO MACHINE MAN ══ */}
+              <div className="border-2 border-t-0 border-gray-900 overflow-hidden">
+                <div className="bg-gray-900 text-white text-center font-bold text-[11px] py-2 tracking-widest uppercase">
+                  Job Details to Machine Man
+                </div>
+                <div className="p-4 space-y-2.5 bg-white">
+                  {/* To + Sl.no */}
+                  <div className="flex items-end gap-4">
+                    <Field
+                      label="To"
+                      value={slip?.machine_man_to || slip?.operator_name || ""}
+                      flex={2}
+                      bold
+                    />
+                    <div className="flex items-end gap-1.5 flex-shrink-0">
+                      <span className="text-[10px] text-gray-600">Sl.no.</span>
+                      <span className="font-black text-xl leading-tight text-gray-900 border-b-2 border-gray-800 px-3">{slipNo}</span>
+                    </div>
+                  </div>
+                  {/* Date */}
+                  <div className="flex items-end gap-2">
+                    <span className="text-[10px] text-gray-600 whitespace-nowrap font-medium">Date :</span>
+                    <span className="border-b border-gray-800 flex-1 text-[10px] pb-0.5 font-medium">{today}</span>
+                  </div>
 
-            <div className="mb-4">
-              <label className="text-xs text-slate-500 block mb-1">Rejection Reason *</label>
-              <textarea
-                value={rejectionReason}
-                onChange={(e) => setRejectionReason(e.target.value)}
-                placeholder="Enter reason for rejection..."
-                rows={3}
-                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400"
-              />
-            </div>
+                  <div className="border-t border-dashed border-gray-300 my-2" />
 
-            <div className="flex gap-2">
-              <button
-                onClick={handleReject}
-                disabled={!rejectionReason.trim() || creating}
-                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              >
-                {creating ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    Rejecting...
-                  </>
-                ) : (
-                  'Reject Sample'
-                )}
-              </button>
-              <button
-                onClick={() => {
-                  setShowRejectModal(false);
-                  setRejectionReason("");
-                  setSelectedSample(null);
-                }}
-                className="px-4 py-2 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 transition-colors text-sm font-medium"
-              >
-                Cancel
-              </button>
+                  <Field label="Name of the Job :" value={slip?.product_name} bold />
+
+                  <div className="flex items-end gap-3">
+                    <Field label="Size of the Job :" value={slip?.job_size} flex={2} />
+                    <Field label="Inside Pages" value={slip?.inside_pages || ""} flex={1} />
+                  </div>
+
+                  <div className="flex items-end gap-3">
+                    <Field label="No. of Copies :" value={slip?.copies || slip?.quantity} flex={2} />
+                    <Field label="Total Forma" value={slip?.total_forms || ""} flex={1} />
+                  </div>
+
+                  <div className="flex items-end gap-3">
+                    <Field label="No. of Polymaster / PS Plates" value={slip?.polymaster_plates || ""} flex={2} />
+                    <Field label="Size :" value={slip?.plate_size} flex={1} />
+                  </div>
+
+                  {/* Colour row */}
+                  <div className="flex items-end gap-2">
+                    <span className="text-[10px] text-gray-600 whitespace-nowrap font-medium">
+                      Colour : <span className="font-bold text-gray-900">1 / 2 / 3 / 4</span>
+                    </span>
+                    <Field label="Name of the Colours" value={slip?.inside_color_names} />
+                    {slip?.inside_colors !== undefined && slip.inside_colors > 0 && (
+                      <span className="border-b border-gray-800 px-2 text-[10px] font-bold text-gray-900">
+                        {slip.inside_colors}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Cover colour row */}
+                  <div className="flex items-end gap-2">
+                    <span className="text-[10px] text-gray-600 whitespace-nowrap font-medium">
+                      Cover Colour : <span className="font-bold text-gray-900">1 / 2 / 3 / 4</span>
+                    </span>
+                    <Field label="Name of the Colours" value={slip?.cover_color_names} />
+                    {slip?.cover_colors !== undefined && slip.cover_colors > 0 && (
+                      <span className="border-b border-gray-800 px-2 text-[10px] font-bold text-gray-900">
+                        {slip.cover_colors}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Machine info */}
+                  {slip?.machine_name && slip.machine_name !== "Unassigned" && (
+                    <Field label="Machine :" value={slip.machine_name} />
+                  )}
+                </div>
+              </div>
+
+              {/* ══ SECTION 3 — POST PRESS DIVISION ══ */}
+              <div className="border-2 border-t-0 border-gray-900 rounded-b-sm overflow-hidden">
+                <div className="bg-gray-900 text-white text-center font-bold text-[11px] py-2 tracking-widest uppercase">
+                  Post Press Division
+                </div>
+                <div className="p-4 bg-white">
+                  <div className="flex items-end gap-4 mb-3">
+                    <div className="flex items-end gap-1.5 flex-shrink-0">
+                      <span className="text-[10px] text-gray-600 font-medium">Sl.no.</span>
+                      <span className="border-b border-gray-800 px-4 text-[10px] pb-0.5">{slipNo}</span>
+                    </div>
+                    <div className="flex items-end gap-1.5 flex-1">
+                      <span className="text-[10px] text-gray-600 font-medium">Date :</span>
+                      <span className="border-b border-gray-800 flex-1 text-[10px] pb-0.5">{today}</span>
+                    </div>
+                  </div>
+                  {slip?.post_press_notes ? (
+                    <div className="border border-gray-200 rounded-lg p-3 min-h-[80px] text-[10px] text-gray-800 whitespace-pre-wrap bg-gray-50 leading-relaxed">
+                      {slip.post_press_notes}
+                    </div>
+                  ) : (
+                    <div className="space-y-5">
+                      <div className="h-4 border-b border-gray-300 w-full" />
+                      <div className="h-4 border-b border-gray-300 w-full" />
+                      <div className="h-4 border-b border-gray-300 w-full" />
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Footer (screen only) */}
+              <div className="mt-4 pt-3 border-t border-slate-200 text-[10px] text-slate-400 text-center">
+                Generated: {new Date().toLocaleString()} · {jobType === "sample" ? "Sample Order" : "Production Order"} · {jobId}
+              </div>
             </div>
           </div>
-        </div>
-      )}
-
-      {/* Quotation View Modal */}
-      {showQuotationView && viewQuotationId && (
-        <QuotationViewModal
-          quotationId={viewQuotationId}
-          onClose={() => {
-            setShowQuotationView(false);
-            setViewQuotationId(null);
-          }}
-        />
-      )}
+        )}
+      </div>
     </div>
   );
 }
